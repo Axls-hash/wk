@@ -172,23 +172,25 @@ func Load(root string) {
 	if CourseUpstream != "wanzi" {
 		CourseUpstream = "skyriver"
 	}
-	SkyriverPlatformZHS = getenv("SKYRIVER_PLATFORM_ZHS", "")
-	SkyriverPlatformZJY = getenv("SKYRIVER_PLATFORM_ZJY", "")
-	SkyriverPlatformYXY = getenv("SKYRIVER_PLATFORM_YXY", "")
-	SkyriverPlatformMOOC = getenv("SKYRIVER_PLATFORM_MOOC", "")
-	SkyriverPlatformXuexitong = getenv("SKYRIVER_PLATFORM_XUEXITONG", "")
-	SkyriverCategoryXuexitong = getenv("SKYRIVER_PLATFORM_XUEXITONG_CATEGORY", "")
-	SkyriverPlatformWelearn = getenv("SKYRIVER_PLATFORM_WELEARN", "")
-	SkyriverCategoryWelearn = getenv("SKYRIVER_PLATFORM_WELEARN_CATEGORY", "")
-	SkyriverPlatformChiguan = getenv("SKYRIVER_PLATFORM_CHIGUAN", "")
-	SkyriverCategoryChiguan = getenv("SKYRIVER_PLATFORM_CHIGUAN_CATEGORY", "")
-	SkyriverPlatformUxiaoyuan = getenv("SKYRIVER_PLATFORM_UXIAOYUAN", "")
+	// 主流平台 → 上游商品 cid（act=get/add 的 platform）。未配环境变量时用常见默认，
+	// 避免只填了 URL/UID/KEY 却因缺 cid，主流平台查课下单全挂。
+	SkyriverPlatformZHS = getenv("SKYRIVER_PLATFORM_ZHS", "56")            // 奶昔-智慧树慢刷
+	SkyriverPlatformZJY = getenv("SKYRIVER_PLATFORM_ZJY", "1446")          // 毛豆-智慧职教
+	SkyriverPlatformYXY = getenv("SKYRIVER_PLATFORM_YXY", "205")           // 一流-优学院
+	SkyriverPlatformMOOC = getenv("SKYRIVER_PLATFORM_MOOC", "5747")        // 曙光-中国大学MOOC
+	SkyriverPlatformXuexitong = getenv("SKYRIVER_PLATFORM_XUEXITONG", "4") // 学习通
+	SkyriverCategoryXuexitong = getenv("SKYRIVER_PLATFORM_XUEXITONG_CATEGORY", "22")
+	SkyriverPlatformWelearn = getenv("SKYRIVER_PLATFORM_WELEARN", "5727")
+	SkyriverCategoryWelearn = getenv("SKYRIVER_PLATFORM_WELEARN_CATEGORY", "53")
+	SkyriverPlatformChiguan = getenv("SKYRIVER_PLATFORM_CHIGUAN", "227")
+	SkyriverCategoryChiguan = getenv("SKYRIVER_PLATFORM_CHIGUAN_CATEGORY", "4")
+	SkyriverPlatformUxiaoyuan = getenv("SKYRIVER_PLATFORM_UXIAOYUAN", "65")
 
-	SkyriverCategoryZHS = getenv("SKYRIVER_PLATFORM_ZHS_CATEGORY", "")
-	SkyriverCategoryZJY = getenv("SKYRIVER_PLATFORM_ZJY_CATEGORY", "")
-	SkyriverCategoryMOOC = getenv("SKYRIVER_PLATFORM_MOOC_CATEGORY", "")
-	SkyriverCategoryYXY = getenv("SKYRIVER_PLATFORM_YXY_CATEGORY", "")
-	SkyriverCategoryUxiaoyuan = getenv("SKYRIVER_PLATFORM_UXIAOYUAN_CATEGORY", "")
+	SkyriverCategoryZHS = getenv("SKYRIVER_PLATFORM_ZHS_CATEGORY", "2")
+	SkyriverCategoryZJY = getenv("SKYRIVER_PLATFORM_ZJY_CATEGORY", "21")
+	SkyriverCategoryMOOC = getenv("SKYRIVER_PLATFORM_MOOC_CATEGORY", "53")
+	SkyriverCategoryYXY = getenv("SKYRIVER_PLATFORM_YXY_CATEGORY", "4")
+	SkyriverCategoryUxiaoyuan = getenv("SKYRIVER_PLATFORM_UXIAOYUAN_CATEGORY", "2")
 
 	SiteURL = strings.TrimRight(getenv("SITE_URL", ""), "/")
 

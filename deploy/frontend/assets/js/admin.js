@@ -24,11 +24,39 @@ const AUDIT_ACTIONS = {
   'user.ban': '封禁用户',
   'user.unban': '解封用户',
   'user.reset_password': '重置密码',
+  'user.delete': '删除用户',
   'order.process': '订单流转',
+  'order.pause': '暂停上游任务',
+  'order.credentials': '查看订单凭据',
   'redeem.generate': '生成充值码',
   'redeem.disable': '作废充值码',
   'ip.ban': '封禁IP',
   'ip.unban': '解封IP',
+  'price.set': '设置平台价',
+  'syy.price.set': '设置运动售价',
+  'syy.price.reset': '恢复运动默认价',
+  'more.price.set': '设置商品售价',
+  'more.price.reset': '恢复商品默认价',
+  'more.fenlei.hide': '删除货源分类',
+  'more.fenlei.show': '恢复货源分类',
+  'more.status.on': '上架商品',
+  'more.status.off': '下架商品',
+  'frontcat.create': '新建前台分类',
+  'frontcat.update': '改前台分类',
+  'frontcat.delete': '删前台分类',
+  'frontcat.items.add': '分类挂载商品',
+  'frontcat.items.remove': '分类移除商品',
+  'bing.price.set': '设置病例售价',
+  'bing.price.reset': '恢复病例默认价',
+  'bing.enable': '开启病例功能',
+  'bing.disable': '关闭病例功能',
+  'qd.price.set': '设置自动签到售价',
+  'qd.enable': '开启自动签到功能',
+  'qd.disable': '关闭自动签到功能',
+  'syscfg.save': '保存支付/对接配置',
+  'announcement.create': '发布公告',
+  'announcement.update': '更新公告',
+  'announcement.delete': '删除公告',
 }
 let logsActiveTab = 'points' // 「流水与审计」当前子页，跨重复进入保留（避免每次重开都跳回积分流水）
 
@@ -108,9 +136,13 @@ function renderTab() {
   else if (t === 'announcements') renderAnnouncements(panel)
   else if (t === 'prices') renderPrices(panel)
   else if (t === 'more-prices') renderMorePrices(panel)
+  else if (t === 'syy-prices') renderSyyPrices(panel)
+  else if (t === 'bing-prices') renderBingPrices(panel)
+  else if (t === 'qd') renderQd(panel)
   else if (t === 'orders') renderOrders(panel)
   else if (t === 'users') renderUsers(panel)
   else if (t === 'codes') renderCodes(panel)
+  else if (t === 'syscfg') renderSyscfg(panel)
   else if (t === 'logs') renderLogs(panel)
 }
 
@@ -195,7 +227,7 @@ function renderDashboard(panel) {
     ]))
     async function runMoreSync() {
       if (syncInfo.textContent.includes('同步中…')) return
-      syncInfo.textContent = '同步中（拉取天河商品可能需要十几秒）…'
+      syncInfo.textContent = '同步中（拉取上游商品可能需要十几秒）…'
       try {
         const data = await adminApi.moreSync()
         syncInfo.textContent = `✓ 完成：上新 ${data.inserted}，更新 ${data.updated}，下架 ${data.removed}，目录 ${data.catalog}（共 ${data.total} 项，耗时 ${data.dur}）`
@@ -288,91 +320,500 @@ function renderPrices(panel) {
   load()
 }
 
-/* ==================== 综合网课售价 ==================== */
+/* ==================== 货源上架（前台分类 + 选项目） ==================== */
 
-// 综合网课（more_products）货源商品改价：进价=天河价×倍率（同步刷新），
-// 售价=最终展示/扣款价。改价只影响本系统结算，下单提交给天河的参数不变。
+// 同步只入库；前台只显示你自建的分类，并勾选挂上的商品。
 function renderMorePrices(panel) {
-  const state = { q: '', fenlei: '', page: 1, data: null, modules: [] }
+  const state = {
+    q: '', fenlei: '', page: 1, data: null,
+    srcCats: [], front: [],
+  }
   const body = h('tbody')
+  const frontBody = h('tbody')
+  const yuan = (v) => (v > 0 ? `¥${Number(v).toFixed(2)}` : '—')
 
-  const load = async () => {
+  const fenleiName = (f) => {
+    const c = state.srcCats.find((x) => String(x.fenlei) === String(f))
+    return (c && c.name) ? c.name : `货源 ${f}`
+  }
+
+  const fenleiSel = h('select', { onchange: (e) => { state.fenlei = e.target.value; state.page = 1; loadProducts() } }, [h('option', { value: '' }, '全部货源')])
+
+  function refillFenleiSel() {
+    const cur = state.fenlei
+    fenleiSel.replaceChildren(h('option', { value: '' }, '全部货源'))
+    state.srcCats.forEach((c) => {
+      fenleiSel.appendChild(h('option', { value: String(c.fenlei) }, `${c.name || ('货源' + c.fenlei)}（${c.total || 0}）`))
+    })
+    fenleiSel.value = cur
+  }
+
+  async function loadFront() {
     try {
-      state.data = await adminApi.moreProducts({ q: state.q.trim(), fenlei: state.fenlei, page: state.page, page_size: 20 })
-      draw()
+      const data = await adminApi.frontCategories()
+      state.front = Array.isArray(data.items) ? data.items : []
+      drawFront()
     } catch (e) { notify(e.message, true) }
   }
 
-  // 模块下拉：从公开 /api/more-platforms 拿 name→category
-  const fenleiSel = h('select', { onchange: (e) => { state.fenlei = e.target.value; state.page = 1; load() } }, [h('option', { value: '' }, '全部货源')])
-  api.morePlatforms().then((mods) => {
-    state.modules = Array.isArray(mods) ? mods : []
-    state.modules.forEach((m) => fenleiSel.appendChild(h('option', { value: String(m.category || '') }, m.name || String(m.category))))
-  }).catch(() => {})
-
-  const fenleiName = (f) => {
-    const m = state.modules.find((x) => String(x.category) === String(f))
-    return m ? m.name : `分类 ${f}`
+  async function loadSrcCats() {
+    try {
+      const data = await adminApi.moreFenlei()
+      state.srcCats = Array.isArray(data.items) ? data.items : []
+      refillFenleiSel()
+    } catch (_) {}
   }
-  const yuan = (v) => (v > 0 ? `¥${v.toFixed(2)}` : '—')
 
-  function draw() {
+  function drawFront() {
+    if (!state.front.length) {
+      frontBody.replaceChildren(h('tr', null, h('td', { colSpan: 4 }, h('div', { class: 'empty' }, '还没有前台分类：先点「加平台」，再勾选商品并自己填售价'))))
+      return
+    }
+    frontBody.replaceChildren(...state.front.map((c) => {
+      const badge = c.count > 0
+        ? h('span', { class: 'badge badge-done' }, `前台 ${c.count} 项`)
+        : h('span', { class: 'badge badge-gray' }, '未挂商品')
+      return h('tr', null, [
+        h('td', { style: 'font-weight:700' }, c.name),
+        h('td', { class: 'mono' }, String(c.total || 0)),
+        h('td', null, badge),
+        h('td', null, [
+          h('button', { class: 'btn btn-sm btn-primary', onclick: () => openPicker(c) }, '选项目上架'),
+          ' ',
+          h('button', { class: 'btn btn-sm', onclick: () => editFront(c) }, '改名'),
+          ' ',
+          h('button', { class: 'btn btn-sm btn-danger', onclick: () => delFront(c) }, '删除'),
+        ]),
+      ])
+    }))
+  }
+
+  async function createFront() {
+    const name = prompt('前台分类名称（用户看到的平台名）', '')
+    if (name == null) return
+    const n = name.trim()
+    if (!n) { notify('名称不能为空', true); return }
+    try {
+      await adminApi.createFrontCategory(n, 0, 1)
+      notify(`已创建「${n}」`)
+      await loadFront()
+    } catch (e) { notify(e.message, true) }
+  }
+
+  async function editFront(c) {
+    const name = prompt('分类名称', c.name)
+    if (name == null) return
+    const n = name.trim()
+    if (!n) return
+    try {
+      await adminApi.updateFrontCategory(c.id, { name: n })
+      notify('已保存')
+      await loadFront()
+    } catch (e) { notify(e.message, true) }
+  }
+
+  async function delFront(c) {
+    if (!confirm(`删除前台分类「${c.name}」？挂在上面的商品会从前台拿掉（同步库仍保留）。`)) return
+    try {
+      await adminApi.deleteFrontCategory(c.id)
+      notify('已删除')
+      await loadFront()
+    } catch (e) { notify(e.message, true) }
+  }
+
+  // 弹窗：勾选商品上架，售价自己填（不用倍率）
+  async function openPicker(cat) {
+    let attached = new Set()
+    try {
+      const d = await adminApi.frontCategoryItems(cat.id)
+      ;(d.cids || []).forEach((id) => attached.add(Number(id)))
+    } catch (e) { notify(e.message, true); return }
+
+    // priceDrafts: cid → 用户填的售价（元）
+    const st = { q: '', fenlei: '', page: 1, data: null, selected: new Set(attached), priceDrafts: new Map(), known: new Map() }
+    const listBody = h('tbody')
+    const tip = h('div', { class: 'tip' }, '')
+    const srcSel = h('select', { onchange: (e) => { st.fenlei = e.target.value; st.page = 1; reload() } }, [h('option', { value: '' }, '全部货源')])
+    state.srcCats.forEach((c) => srcSel.appendChild(h('option', { value: String(c.fenlei) }, c.name || String(c.fenlei))))
+    const qEl = h('input', { class: 'input grow', style: 'max-width:220px', placeholder: '搜索商品名' })
+    qEl.addEventListener('input', debounce(() => { st.q = qEl.value; st.page = 1; reload() }, 300))
+    const pagerWrap = h('div', { class: 'pager' })
+
+    const displayPrice = (it) => {
+      const cid = Number(it.cid)
+      if (st.priceDrafts.has(cid)) return st.priceDrafts.get(cid)
+      return it.price_yuan > 0 ? it.price_yuan : ''
+    }
+
+    async function reload() {
+      tip.textContent = '加载中…'
+      try {
+        st.data = await adminApi.moreProducts({ q: st.q.trim(), fenlei: st.fenlei, page: st.page, page_size: 30 })
+        tip.textContent = `已勾选 ${st.selected.size} 项 · 库内共 ${st.data.total} 项 · 请自己填售价`
+        listBody.replaceChildren(...(st.data.items || []).map((it) => {
+          const cid = Number(it.cid)
+          st.known.set(cid, it)
+          const priceInp = h('input', {
+            class: 'input', type: 'number', step: '0.01', min: '0',
+            value: displayPrice(it) === '' ? '' : String(displayPrice(it)),
+            placeholder: '自己填售价',
+            style: 'width:96px;padding:4px 6px',
+          })
+          const ck = h('input', { type: 'checkbox', checked: st.selected.has(cid) || undefined })
+          ck.addEventListener('change', () => {
+            if (ck.checked) st.selected.add(cid)
+            else st.selected.delete(cid)
+            tip.textContent = `已勾选 ${st.selected.size} 项 · 库内共 ${st.data.total} 项 · 请自己填售价`
+          })
+          priceInp.addEventListener('input', () => {
+            const v = parseFloat(priceInp.value)
+            if (!Number.isNaN(v) && v >= 0) st.priceDrafts.set(cid, v)
+            else st.priceDrafts.delete(cid)
+            if (!st.selected.has(cid) && priceInp.value !== '') {
+              ck.checked = true
+              st.selected.add(cid)
+            }
+          })
+          return h('tr', null, [
+            h('td', null, ck),
+            h('td', { class: 'mono' }, it.cid),
+            h('td', { class: 'wrap', style: 'max-width:240px' }, it.name),
+            h('td', null, fenleiName(it.fenlei)),
+            h('td', { class: 'mono' }, yuan(it.base_yuan)),
+            h('td', null, priceInp),
+          ])
+        }))
+        if (!(st.data.items || []).length) {
+          listBody.replaceChildren(h('tr', null, h('td', { colSpan: 6 }, h('div', { class: 'empty' }, '没有商品，请先在看板同步'))))
+        }
+        pagerWrap.replaceChildren(pagerEl(st.page, (p) => { st.page = p; reload() }, st.data.total, 30))
+      } catch (e) { tip.textContent = e.message }
+    }
+
+    const saveBtn = h('button', { class: 'btn btn-primary', type: 'button' }, '保存上架与价格')
+    saveBtn.onclick = async () => {
+      // 新勾选的必须自己填了售价
+      const missing = [...st.selected].filter((cid) => {
+        if (attached.has(cid) && !st.priceDrafts.has(cid)) return false
+        if (st.priceDrafts.has(cid) && st.priceDrafts.get(cid) > 0) return false
+        const it = st.known.get(cid)
+        return !(it && it.price_yuan > 0)
+      })
+      if (missing.length) {
+        notify(`有 ${missing.length} 项还没填售价，请自己填好再保存`, true)
+        return
+      }
+      saveBtn.disabled = true
+      try {
+        const next = [...st.selected]
+        const prev = [...attached]
+        const toAdd = next.filter((id) => !attached.has(id))
+        const toDel = prev.filter((id) => !st.selected.has(id))
+        // 先写价，再挂载（挂载不再用倍率改价）
+        let priced = 0
+        for (const [cid, yuanVal] of st.priceDrafts) {
+          if (!st.selected.has(cid)) continue
+          if (!(yuanVal > 0) || yuanVal > 10000) continue
+          await adminApi.setMorePrice(cid, yuanVal)
+          priced++
+        }
+        if (toAdd.length) await adminApi.addFrontCategoryItems(cat.id, toAdd)
+        if (toDel.length) await adminApi.removeFrontCategoryItems(cat.id, toDel)
+        notify(`「${cat.name}」已更新：+${toAdd.length} / -${toDel.length}` + (priced ? ` · 定价 ${priced} 项` : ''))
+        mask.remove()
+        await loadFront()
+        await loadProducts()
+      } catch (e) {
+        notify(e.message, true)
+        saveBtn.disabled = false
+      }
+    }
+
+    const mask = modalMask(h('div', { class: 'modal', style: 'width:min(820px,96vw);max-height:88vh;display:flex;flex-direction:column' }, [
+      h('h3', null, `给「${cat.name}」选项目上架`),
+      h('div', { class: 'tip', style: 'margin-bottom:8px' }, '勾选项目，右侧自己填售价；不设倍率。新上架的必须有售价才能保存。'),
+      h('div', { class: 'toolbar', style: 'margin-bottom:8px' }, [qEl, srcSel]),
+      tip,
+      h('div', { class: 'table-wrap', style: 'flex:1;overflow:auto;max-height:50vh;margin-top:8px' }, h('table', null, [
+        h('thead', null, h('tr', null, ['', 'ID', '商品', '货源', '进价', '售价'].map((x) => h('th', null, x)))),
+        listBody,
+      ])),
+      pagerWrap,
+      h('div', { class: 'modal-actions' }, [
+        h('button', { type: 'button', class: 'btn', onclick: () => mask.remove() }, '取消'),
+        saveBtn,
+      ]),
+    ]))
+    reload()
+  }
+
+  async function loadProducts() {
+    try {
+      state.data = await adminApi.moreProducts({ q: state.q.trim(), fenlei: state.fenlei, page: state.page, page_size: 20 })
+      drawProducts()
+    } catch (e) { notify(e.message, true) }
+  }
+
+  function drawProducts() {
     if (!state.data) return
     body.replaceChildren(...state.data.items.map((it) => {
       const draft = h('input', { class: 'input', type: 'number', step: '0.01', min: '0', value: it.price_yuan > 0 ? String(it.price_yuan) : '', placeholder: it.base_yuan > 0 ? it.base_yuan.toFixed(2) : '0.00', style: 'width:92px;padding:5px 8px' })
-      const badge = it.price_override
+      const priceBadge = it.price_override
         ? h('span', { class: 'badge badge-progress' }, '自定义')
-        : h('span', { class: 'badge badge-gray' }, '天河价')
-      const resetBtn = it.price_override ? h('button', { class: 'btn btn-sm', title: '恢复天河默认价', onclick: () => resetPrice(it) }, '恢复默认') : null
+        : h('span', { class: 'badge badge-gray' }, '上游价')
+      const resetBtn = it.price_override ? h('button', { class: 'btn btn-sm', onclick: () => resetPrice(it) }, '恢复默认') : null
       return h('tr', null, [
         h('td', { class: 'mono' }, it.cid),
-        h('td', { class: 'wrap', style: 'max-width:260px' }, it.name),
+        h('td', { class: 'wrap', style: 'max-width:240px' }, it.name),
         h('td', null, fenleiName(it.fenlei)),
         h('td', { class: 'mono' }, yuan(it.base_yuan)),
         h('td', { class: 'mono' }, yuan(it.price_yuan)),
-        h('td', null, [draft, ' ', h('button', { class: 'btn btn-sm btn-primary', onclick: () => save(it, draft) }, '保存')]),
-        h('td', null, [badge, resetBtn ? ' ' : null, resetBtn]),
+        h('td', null, [draft, ' ', h('button', { class: 'btn btn-sm btn-primary', onclick: () => savePrice(it, draft) }, '保存'), ' ', resetBtn]),
+        h('td', null, priceBadge),
       ])
     }))
     if (state.data.items.length === 0) body.replaceChildren(h('tr', null, h('td', { colSpan: 7 }, h('div', { class: 'empty' }, '没有匹配的商品'))))
-    // 数据加载完后再填充分页与计数（不要在渲染时用未加载的 total=0 建分页，否则「下一页」被禁用）
-    const _pg = panel.querySelector('.pager'); if (_pg) _pg.replaceWith(pagerEl(state.page, (p) => { state.page = p; load() }, state.data.total, 20))
+    const _pg = panel.querySelector('.pager'); if (_pg) _pg.replaceWith(pagerEl(state.page, (p) => { state.page = p; loadProducts() }, state.data.total, 20))
     const _ct = panel.querySelector('[data-count]'); if (_ct) _ct.textContent = `共 ${state.data.total} 项`
   }
 
-  async function save(it, input) {
+  async function savePrice(it, input) {
     const v = parseFloat(input.value)
     if (Number.isNaN(v) || v < 0) { notify('请输入合法价格', true); return }
     if (v > 10000) { notify('价格需在 0~10000 元之间', true); return }
     try {
       await adminApi.setMorePrice(it.cid, v)
       notify(`已更新「${it.name}」售价 ¥${v.toFixed(2)}`)
-      await load()
+      await loadProducts()
     } catch (e) { notify(e.message, true) }
   }
 
   async function resetPrice(it) {
-    if (!confirm(`确定把「${it.name}」恢复为天河默认价？`)) return
+    if (!confirm(`确定把「${it.name}」恢复为上游默认价？`)) return
     try {
       await adminApi.setMorePrice(it.cid, 0)
-      notify(`「${it.name}」已恢复天河默认价`)
-      await load()
+      notify(`「${it.name}」已恢复上游默认价`)
+      await loadProducts()
     } catch (e) { notify(e.message, true) }
   }
 
-  const qInput = h('input', { class: 'input grow', style: 'max-width:240px', placeholder: '搜索商品名，如 青书学堂 / 学起plus' })
-  qInput.addEventListener('input', debounce(() => { state.q = qInput.value; state.page = 1; load() }, 300))
+  const qInput = h('input', { class: 'input grow', style: 'max-width:240px', placeholder: '搜索商品名' })
+  qInput.addEventListener('input', debounce(() => { state.q = qInput.value; state.page = 1; loadProducts() }, 300))
 
   panel.appendChild(h('div', { class: 'card' }, [
-    h('h2', null, '综合网课售价'),
-    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '设置后立即生效：前台展示与积分扣款按此「售价」计算；改价不影响提交给天河的订单，天河按它自己的账单扣款。同步任务只刷新「进价」，「自定义」售价不会被覆盖；点「恢复默认」可回到天河价。'),
+    h('h2', null, '前台分类（用户看到的平台）'),
+    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '同步不会自动上架。加平台后点「选项目上架」：勾选商品并自己填售价，不用倍率。'),
+    h('div', { class: 'toolbar', style: 'margin-bottom:10px' }, [
+      h('button', { class: 'btn btn-primary btn-sm', onclick: createFront }, '＋ 加平台/分类'),
+    ]),
+    h('div', { class: 'table-wrap' }, h('table', null, [
+      h('thead', null, h('tr', null, ['分类名', '已挂载', '状态', '操作'].map((x) => h('th', null, x)))),
+      frontBody,
+    ])),
+  ]))
+
+  panel.appendChild(h('div', { class: 'card' }, [
+    h('h2', null, '同步商品库（改价）'),
+    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '这里是上游同步下来的全部商品，只改售价；要出现在前台必须挂到上面的分类里。'),
     h('div', { class: 'toolbar' }, [qInput, fenleiSel, h('span', { class: 'tip', dataset: { count: '' } }, '')]),
     h('div', { class: 'table-wrap' }, h('table', null, [
-      h('thead', null, h('tr', null, ['ID', '商品', '货源', '进价', '售价', '改价', '状态'].map((x) => h('th', null, x)))),
+      h('thead', null, h('tr', null, ['ID', '商品', '货源', '进价', '售价', '改价', '价类型'].map((x) => h('th', null, x)))),
       body,
     ])),
     h('div', { class: 'pager' }),
   ]))
+
+  loadSrcCats()
+  loadFront()
+  loadProducts()
+}
+
+/* ==================== 运动定价 ==================== */
+
+// 我爱运动（syy）按项目定价：默认价 = 上游基准价 × 倍率(SYY_PRICE_MULT)，可按项目覆盖。
+// 注意实际成本 = 基准价 × 你的等级费率 ÷ 基准费率，自定义价需覆盖成本。
+function renderSyyPrices(panel) {
+  const items = []
+  const body = h('tbody')
+
+  async function load() {
+    try {
+      const data = await adminApi.syyProjectsAdmin()
+      body.replaceChildren(...(data.items || []).map((it) => {
+        const input = h('input', { class: 'input', type: 'number', step: '0.01', min: '0', value: (it.unit_fen / 100).toFixed(2), style: 'width:92px;padding:5px 8px' })
+        const save = async () => {
+          const v = parseFloat(input.value)
+          if (Number.isNaN(v) || v < 0) { notify('请输入合法价格', true); return }
+          if (v > 10000) { notify('价格需在 0~10000 元之间', true); return }
+          try { await adminApi.syySetPrice(it.project_id, v); notify(`「${it.name}」售价已更新`); load() } catch (e) { notify(e.message, true) }
+        }
+        const resetBtn = it.source === 'custom' ? h('button', { class: 'btn btn-sm', title: '删除自定义价，回退默认倍率价', onclick: async () => {
+          if (!confirm(`确定把「${it.name}」恢复为默认倍率价？`)) return
+          try { await adminApi.syySetPrice(it.project_id, 0); notify(`「${it.name}」已恢复默认`); load() } catch (e) { notify(e.message, true) }
+        } }, '恢复默认') : null
+        return h('tr', null, [
+          h('td', { class: 'mono' }, it.project_id),
+          h('td', { class: 'wrap', style: 'max-width:220px' }, [
+            h('div', { style: 'font-weight:600' }, it.name),
+            it.description ? h('div', { style: 'font-size:11.5px;color:#7a8087;margin-top:2px' }, it.description) : null,
+          ]),
+          h('td', { class: 'mono' }, `¥${(it.base_price || 0).toFixed(2)}`),
+          h('td', { class: 'mono', style: 'font-weight:700' }, `¥${(it.unit_fen / 100).toFixed(2)}`),
+          h('td', null, h('span', { class: `badge ${it.source === 'custom' ? 'badge-progress' : 'badge-gray'}` }, it.source === 'custom' ? '自定义' : '默认倍率')),
+          h('td', null, [input, ' ', h('button', { class: 'btn btn-sm btn-primary', onclick: save }, '保存'), resetBtn ? ' ' : null, resetBtn]),
+        ])
+      }))
+      if (!body.children.length) {
+        body.replaceChildren(h('tr', null, h('td', { colSpan: 6 }, h('div', { class: 'empty' }, '上游项目加载失败或暂无项目'))))
+      }
+    } catch (e) { notify(e.message, true) }
+  }
+
+  panel.appendChild(h('div', { class: 'card' }, [
+    h('h2', null, '运动定价（元/单位）'),
+    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '本站售价按「元/单位」计，未自定义的项目 = 上游基准价 × 倍率(SYY_PRICE_MULT)。注意实际成本 = 基准价 × 你的等级费率 ÷ 基准费率，售价必须覆盖成本。改动即时生效，不影响已下单的订单。'),
+    h('div', { class: 'table-wrap' }, h('table', null, [
+      h('thead', null, h('tr', null, ['ID', '项目', '上游基准价', '本站售价', '来源', '修改 / 操作'].map((x) => h('th', null, x)))),
+      body,
+    ])),
+  ]))
+  load()
+}
+
+/* ==================== 病例管理（开关 + 模板定价） ==================== */
+
+// 病例（bingli）：管理端运行开关 + 按模板改价。
+// 默认售价 = 上游模板价 × 倍率(BING_PRICE_MULT)；自定义价优先，保存后即时生效。
+function renderBingPrices(panel) {
+  let settings = null
+  let apps = null
+  let loadError = ''
+
+  const root = h('div')
+  panel.appendChild(root)
+
+  async function load() {
+    try {
+      settings = await adminApi.bingSettings()
+    } catch (e) {
+      if (!e.auth) notify(e.message, true)
+      return
+    }
+    apps = null
+    loadError = ''
+    if (settings.configured) {
+      try {
+        const data = await adminApi.bingApplicationsAdmin()
+        apps = Array.isArray(data.items) ? data.items : []
+      } catch (e) {
+        loadError = e.message
+        notify('病例模板加载失败：' + e.message, true)
+      }
+    }
+    draw()
+  }
+
+  function draw() {
+    root.replaceChildren()
+    root.appendChild(switchCard())
+    if (!settings.configured) {
+      root.appendChild(h('div', { class: 'card' }, h('div', { class: 'empty' },
+        '病例上游未配置：请在服务端 .env 填写 BING_USER_EMAIL / BING_API_KEY 后重启。未配置时开关不会生效。')))
+      return
+    }
+    if (apps === null) {
+      root.appendChild(h('div', { class: 'card' }, [
+        h('div', { class: 'empty' }, loadError ? `模板加载失败：${loadError}` : '模板加载中…'),
+        h('div', { style: 'margin-top:10px' }, h('button', { class: 'btn btn-sm', onclick: load }, '重新加载')),
+      ]))
+      return
+    }
+    root.appendChild(priceCard())
+  }
+
+  function switchCard() {
+    const on = settings.switch_on
+    const available = settings.available
+    const toggle = async () => {
+      if (on && !confirm('关闭后用户端将隐藏病例入口，且无法新建订单；已支付订单仍可查看图片/重试。确定关闭？')) return
+      try {
+        settings = await adminApi.bingSetEnabled(!on)
+        notify(!on ? '病例功能已开启' : '病例功能已关闭')
+        await load()
+      } catch (e) { notify(e.message, true) }
+    }
+    return h('div', { class: 'card', style: 'margin-bottom:14px' }, [
+      h('h2', null, '病例功能开关'),
+      h('div', { class: 'toolbar' }, [
+        h('span', { class: `badge ${available ? 'badge-done' : 'badge-gray'}` }, available ? '用户端已开放' : '用户端已关闭'),
+        h('button', { class: `btn btn-sm ${on ? 'btn-danger' : 'btn-primary'}`, onclick: toggle }, on ? '关闭病例' : '开启病例'),
+        h('span', { class: 'tip' }, '关闭只影响新建/浏览模板；已支付订单的图片与重试不受影响。'),
+      ]),
+      !settings.configured ? h('div', { class: 'tip', style: 'margin-top:10px;color:#b45309' }, '上游账号/密钥未配置，开关即使开启也不可用。') : null,
+    ])
+  }
+
+  function priceCard() {
+    const body = h('tbody')
+    const rows = apps.map((it) => {
+      const input = h('input', {
+        class: 'input', type: 'number', step: '0.01', min: '0',
+        value: (it.price_fen / 100).toFixed(2), style: 'width:96px;padding:5px 8px',
+      })
+      const save = async () => {
+        const v = parseFloat(input.value)
+        if (Number.isNaN(v) || v < 0) { notify('请输入合法价格', true); return }
+        if (v > 10000) { notify('价格需在 0~10000 元之间', true); return }
+        if (v > 0 && v < 0.01) { notify('自定义价格不能低于 0.01 元', true); return }
+        try {
+          await adminApi.bingSetPrice(it.id, v)
+          notify(`「${it.name}」售价已更新`)
+          await load()
+        } catch (e) { notify(e.message, true) }
+      }
+      const reset = async () => {
+        if (!confirm(`确定把「${it.name}」恢复为默认价（上游价 × ${fmtNum(settings.price_mult)}）？`)) return
+        try {
+          await adminApi.bingSetPrice(it.id, 0)
+          notify(`「${it.name}」已恢复默认价`)
+          await load()
+        } catch (e) { notify(e.message, true) }
+      }
+      const badge = it.source === 'custom'
+        ? h('span', { class: 'badge badge-progress' }, '自定义')
+        : h('span', { class: 'badge badge-gray' }, '默认价')
+      return h('tr', null, [
+        h('td', { class: 'mono' }, it.id),
+        h('td', { class: 'wrap', style: 'max-width:240px' }, [
+          h('div', { style: 'font-weight:600' }, it.name || '(未命名模板)'),
+          it.description ? h('div', { style: 'font-size:11.5px;color:#7a8087;margin-top:2px' }, it.description) : null,
+        ]),
+        h('td', { class: 'mono' }, fmtNum(it.upstream_price)),
+        h('td', { class: 'mono' }, fmtMoney(it.default_price_fen)),
+        h('td', { class: 'mono', style: 'font-weight:700' }, fmtMoney(it.price_fen)),
+        h('td', null, badge),
+        h('td', null, [
+          input, ' ',
+          h('button', { class: 'btn btn-sm btn-primary', onclick: save }, '保存'),
+          it.source === 'custom' ? ' ' : null,
+          it.source === 'custom' ? h('button', { class: 'btn btn-sm', onclick: reset }, '恢复默认') : null,
+        ]),
+      ])
+    })
+    body.replaceChildren(...rows)
+    if (!rows.length) {
+      body.replaceChildren(h('tr', null, h('td', { colSpan: 7 }, h('div', { class: 'empty' }, '上游暂无可用病例模板'))))
+    }
+    return h('div', { class: 'card' }, [
+      h('h2', null, '病例模板售价'),
+      h('div', { class: 'tip', style: 'margin-bottom:12px' }, `默认售价 = 上游模板价 × ${fmtNum(settings.price_mult)}；自定义价优先且即时生效。用户端展示与下单扣费使用同一价格，改价不影响已提交订单。`),
+      h('div', { class: 'table-wrap' }, h('table', null, [
+        h('thead', null, h('tr', null, ['模板ID', '模板', '上游价(积分)', '默认售价', '当前售价', '来源', '改价 / 操作'].map((x) => h('th', null, x)))),
+        body,
+      ])),
+    ])
+  }
+
   load()
 }
 
@@ -570,7 +1011,17 @@ function renderOrders(panel) {
         } }, procLabel)),
         h('td', null, o.agent_id || '-'),
         h('td', { class: 'wrap' }, o.remark || '-'),
-        h('td', null),
+        h('td', null, o.status === 'paid' ? h('button', {
+          class: 'btn btn-sm', title: '暂停该订单在上游的全部刷课任务（act=zt）',
+          onclick: async () => {
+            if (!confirm(`确定暂停订单 ${o.order_id.slice(0, 8)}… 的上游任务？\n（只暂停上游执行，不改本站订单状态，可到上游后台恢复）`)) return
+            try {
+              const res = await adminApi.pauseOrder(o.order_id)
+              if (res.failed > 0) notify(`暂停完成：成功 ${res.success}/${res.total}，失败 ${res.failed}，详情见审计`, true)
+              else notify(`已暂停 ${res.success}/${res.total} 个上游任务`)
+            } catch (e) { notify(e.message, true) }
+          },
+        }, '暂停') : null),
       ]))
       if (open) {
         rows.push(h('tr', { key: o.order_id + '-d' }, h('td', { colSpan: 12, class: 'wrap' }, [
@@ -865,6 +1316,201 @@ function renderCodes(panel) {
 
 /* ==================== 流水与审计 ==================== */
 
+/* ==================== 支付与对接（易支付 + 天河课程 API） ==================== */
+
+function renderSyscfg(panel) {
+  panel.replaceChildren(h('div', { class: 'tip' }, '对接配置加载中…'))
+
+  async function load() {
+    try {
+      const data = await adminApi.syscfg()
+      draw(data)
+    } catch (e) {
+      panel.replaceChildren(h('div', { class: 'error' }, '加载失败：' + e.message))
+    }
+  }
+
+  function field(label, input, tip) {
+    return h('label', { style: 'display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1' }, [
+      h('span', { style: 'font-size:13px;color:var(--text-muted)' }, label),
+      input,
+      tip ? h('span', { class: 'tip', style: 'margin:0' }, tip) : null,
+    ])
+  }
+
+  function textInput(name, value, opts = {}) {
+    return h('input', {
+      class: 'input',
+      name,
+      type: opts.type || 'text',
+      value: value || '',
+      placeholder: opts.placeholder || '',
+      autocomplete: 'off',
+      style: 'width:100%',
+    })
+  }
+
+  function draw(data) {
+    const siteURL = textInput('site_url', data.site_url, { placeholder: 'https://你的域名' })
+    const epayURL = textInput('epay_api_url', data.epay_api_url, { placeholder: 'https://pay.example.com' })
+    const epayPID = textInput('epay_pid', data.epay_pid, { placeholder: '商户 ID' })
+    const epayKey = textInput('epay_key', '', {
+      type: 'password',
+      placeholder: data.epay_key_set ? '已配置，留空则不修改' : '易支付商户密钥',
+    })
+    const epayType = h('select', { class: 'input', name: 'epay_type', style: 'width:100%' }, [
+      h('option', { value: 'wxpay', selected: (data.epay_type || 'wxpay') === 'wxpay' || undefined }, '微信 wxpay'),
+      h('option', { value: 'alipay', selected: data.epay_type === 'alipay' || undefined }, '支付宝 alipay'),
+      h('option', { value: 'qqpay', selected: data.epay_type === 'qqpay' || undefined }, 'QQ钱包 qqpay'),
+    ])
+    const skyURL = textInput('skyriver_url', data.skyriver_url, { placeholder: 'https://天河域名（不要带 /api.php）' })
+    const skyUID = textInput('skyriver_uid', data.skyriver_uid, { placeholder: '对接 uid' })
+    const skyKey = textInput('skyriver_key', '', {
+      type: 'password',
+      placeholder: data.skyriver_key_set ? '已配置，留空则不修改' : '对接 key',
+    })
+    const coursePrice = textInput('course_price', data.course_price, { placeholder: '3.00' })
+    const sxdkURL = textInput('sxdk_upstream_url', data.sxdk_upstream_url, { placeholder: 'https://上级/sxdk/upstream.php' })
+    const sxdkAdmin = textInput('sxdk_admin', data.sxdk_admin, { placeholder: '对接 uid' })
+    const sxdkToken = textInput('sxdk_token', '', {
+      type: 'password',
+      placeholder: data.sxdk_token_set ? '已配置，留空则不修改' : '对接 token/key',
+    })
+    const sxdkPrice = textInput('sxdk_price_yuan', data.sxdk_price_yuan || '1', { placeholder: '1' })
+    const regOpen = h('select', { class: 'input', name: 'register_open', style: 'width:100%' }, [
+      h('option', { value: '1', selected: data.register_open ? true : undefined }, '开放注册'),
+      h('option', { value: '0', selected: !data.register_open ? true : undefined }, '关闭注册'),
+    ])
+    const regCode = textInput('register_code', data.register_code || '', { placeholder: '用户注册时填写的邀请码' })
+
+    const saveBtn = h('button', { class: 'btn', type: 'button' }, '保存配置')
+    saveBtn.onclick = async () => {
+      saveBtn.disabled = true
+      saveBtn.textContent = '保存中…'
+      try {
+        const body = {
+          site_url: siteURL.value.trim(),
+          epay_api_url: epayURL.value.trim(),
+          epay_pid: epayPID.value.trim(),
+          epay_key: epayKey.value,
+          epay_type: epayType.value,
+          skyriver_url: skyURL.value.trim(),
+          skyriver_uid: skyUID.value.trim(),
+          skyriver_key: skyKey.value,
+          course_price: coursePrice.value.trim(),
+          sxdk_upstream_url: sxdkURL.value.trim(),
+          sxdk_admin: sxdkAdmin.value.trim(),
+          sxdk_token: sxdkToken.value,
+          sxdk_price_yuan: sxdkPrice.value.trim(),
+          register_open: regOpen.value === '1',
+          register_code: regCode.value.trim(),
+        }
+        const next = await adminApi.saveSyscfg(body)
+        notify('已保存，立即生效（无需重启）')
+        epayKey.value = ''
+        skyKey.value = ''
+        sxdkToken.value = ''
+        draw(next)
+      } catch (e) {
+        notify(e.message, true)
+        saveBtn.disabled = false
+        saveBtn.textContent = '保存配置'
+      }
+    }
+
+    panel.replaceChildren(h('div', null, [
+      h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+        h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
+          h('h2', { style: 'font-size:16px;margin:0' }, '用户注册 / 邀请码'),
+          h('span', { class: 'badge ' + (data.register_open ? 'badge-done' : 'badge-banned') },
+            data.register_open ? '注册开放中' : '注册已关闭'),
+        ]),
+        h('div', { class: 'tip', style: 'margin-bottom:12px' },
+          '关闭后前台无法注册新账号（已有用户仍可登录）。开放时必须设置邀请码，用户注册时填写一致才能通过。'),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+          field('注册开关', regOpen),
+          field('邀请码', regCode, '发给用户的注册口令；改完立刻生效'),
+        ]),
+      ]),
+      h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+        h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
+          h('h2', { style: 'font-size:16px;margin:0' }, '易支付（在线充值/付款）'),
+          h('span', { class: 'badge ' + (data.pay_enabled ? 'badge-done' : 'badge-banned') },
+            data.pay_enabled ? '已启用' : '未启用'),
+        ]),
+        h('div', { class: 'tip', style: 'margin-bottom:12px' },
+          '三项都填齐才会开启在线支付。站点地址用于回调；密钥留空表示不改。'),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
+          field('站点地址 SITE_URL', siteURL, '回调/跳转用，填公网 https 域名'),
+          field('易支付接口地址', epayURL),
+        ]),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+          field('商户 PID', epayPID),
+          field('商户密钥 KEY', epayKey),
+          field('默认支付方式', epayType),
+        ]),
+      ]),
+      h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+        h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
+          h('h2', { style: 'font-size:16px;margin:0' }, '货源对接（天河/丸子同类）'),
+          h('span', { class: 'badge ' + (data.skyriver_ok ? 'badge-done' : 'badge-banned') },
+            data.skyriver_ok ? '已对接' : '未对接'),
+          (() => {
+            const balTip = h('span', { class: 'tip', style: 'margin:0' }, '')
+            const balBtn = h('button', { class: 'btn btn-sm', type: 'button' }, '查询余额')
+            balBtn.onclick = async () => {
+              balBtn.disabled = true
+              balTip.textContent = '查询中…'
+              try {
+                const res = await adminApi.skyriverBalance()
+                balTip.textContent = `上游余额：${res.balance}`
+                notify(`余额 ${res.balance}`)
+              } catch (e) {
+                balTip.textContent = e.message || '查询失败'
+                notify(e.message, true)
+              } finally { balBtn.disabled = false }
+            }
+            return h('span', { style: 'display:inline-flex;align-items:center;gap:8px' }, [balBtn, balTip])
+          })(),
+        ]),
+        h('div', { class: 'tip', style: 'margin-bottom:12px' },
+          '查课/下单/同步走 api.php。地址只填根域名（如 https://xuexiba.icu），不要带 /api.php。密钥留空表示不改。'),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
+          field('对接地址', skyURL),
+          field('对接 UID', skyUID),
+          field('对接 KEY', skyKey),
+        ]),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+          field('主流平台默认单价（元/门）', coursePrice, '智慧树/学习通等「平台价格」页未单独改价时用这个'),
+        ]),
+      ]),
+      h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+        h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
+          h('h2', { style: 'font-size:16px;margin:0' }, '实习打卡对接'),
+          h('span', { class: 'badge ' + (data.sxdk_ok ? 'badge-done' : 'badge-banned') },
+            data.sxdk_ok ? '已对接' : '未对接'),
+        ]),
+        h('div', { class: 'tip', style: 'margin-bottom:12px' },
+          '对接天河/套娃上级 upstream。三项齐了用户端才能正常查账号、下单；密钥留空表示不改。'),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
+          field('上游地址 SXDK_UPSTREAM_URL', sxdkURL, '一般填 …/sxdk/upstream.php，末尾不要 /'),
+          field('对接 UID', sxdkAdmin),
+          field('对接 Token', sxdkToken),
+        ]),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+          field('售价（积分/天）', sxdkPrice),
+        ]),
+      ]),
+      h('div', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap' }, [
+        saveBtn,
+        h('span', { class: 'tip' }, data.source === 'db' ? '当前以数据库配置为准（可覆盖环境变量）' : '尚未保存过，当前来自环境变量/.env'),
+      ]),
+    ]))
+  }
+
+  load()
+}
+
 function renderLogs(panel) {
   const state = { tab: logsActiveTab, p1: 1, p2: 1, p3: 1, p4: 1, d: {} }
   const theadRow = h('tr')
@@ -966,6 +1612,115 @@ function renderLogs(panel) {
   // 给 tab 按钮统一标 class 便于高亮管理
   tabsBar.querySelectorAll('button').forEach((b) => b.classList.add('logs-tab'))
   loadData()
+}
+
+/* ==================== 自动签到管理（开关 + 定价 + 订单） ==================== */
+
+function renderQd(panel) {
+  panel.replaceChildren(h('div', { class: 'tip' }, '自动签到设置加载中…'))
+  let settings = null
+
+  async function load() {
+    try {
+      settings = await adminApi.qdSettings()
+      draw()
+    } catch (e) {
+      panel.replaceChildren(h('div', { class: 'error' }, '加载失败：' + e.message))
+    }
+  }
+
+  function draw() {
+    const panel2 = h('div')
+    panel2.appendChild(h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+      h('h2', { style: 'font-size:16px;margin-bottom:10px' }, '学习通自动签到'),
+      !settings.configured
+        ? h('div', { class: 'tip', style: 'color:var(--danger)' },
+            '引擎未配置：请在服务端 .env 填写 QD_ENGINE_URL / QD_UID_WEEK / QD_KEY_WEEK（月卡另配 QD_UID_MONTH / QD_KEY_MONTH）后重启。')
+        : h('div', { class: 'tip', style: 'color:var(--text-muted)' },
+            `引擎：${settings.engine_url || '-'}　批发余额：${settings.balance ? settings.balance + ' 元' : (settings.balance_week || settings.balance_month ? `周 ${settings.balance_week || '-'} / 月 ${settings.balance_month || '-'} 元` : '查询失败')}`),
+      h('div', { style: 'display:flex;align-items:center;gap:14px;margin-top:12px;flex-wrap:wrap' }, [
+        h('button', { class: 'btn btn-sm', onclick: async (e) => {
+          const on = settings.switch_on
+          if (on && !confirm('关闭后用户端将隐藏自动签到入口，且无法新建订单；已有订单仍可查看状态/重新上号。确定关闭？')) return
+          try {
+            settings = await adminApi.qdSetEnabled(!on)
+            notify(!on ? '自动签到功能已开启' : '自动签到功能已关闭')
+            draw()
+          } catch (err) { notify(err.message, true) }
+        } }, settings.switch_on ? '关闭功能' : '开启功能'),
+        h('span', { class: 'badge ' + (settings.available ? 'badge-done' : 'badge-banned') },
+          settings.available ? '用户端开放中' : '用户端已关闭'),
+      ]),
+      h('div', { style: 'display:flex;gap:14px;margin-top:14px;flex-wrap:wrap;align-items:flex-end' }, [
+        qdPriceInput('周卡（积分）', settings.price_week, 'week'),
+        qdPriceInput('月卡（积分）', settings.price_month, 'month'),
+      ]),
+    ]))
+
+    const ordersBox = h('div', { class: 'tip' }, '订单加载中…')
+    panel2.appendChild(ordersBox)
+    ;(async () => {
+      try {
+        const d = await adminApi.qdOrdersAdmin()
+        const items = Array.isArray(d.items) ? d.items : []
+        if (!items.length) {
+          ordersBox.replaceChildren(h('div', { class: 'tip', style: 'color:var(--text-muted)' }, '暂无自动签到订单'))
+          return
+        }
+        ordersBox.replaceChildren(h('div', { class: 'card', style: 'padding:0;overflow:hidden' },
+          h('div', { class: 'table-wrap' }, h('table', null, [
+            h('thead', null, h('tr', null, ['时间', '用户ID', '手机号', '卡型', '状态', '引擎状态', '服务到期', '最近动态'].map((c) => h('th', null, c)))),
+            h('tbody', null, items.map((o) => h('tr', null, [
+              h('td', null, new Date(o.created_at * 1000).toLocaleString('zh-CN', { hour12: false })),
+              h('td', null, String(o.user_id || '')),
+              h('td', null, o.phone),
+              h('td', null, o.plan_name),
+              h('td', null, qdAdminBadge(o.status)),
+              h('td', null, o.engine_status || '-'),
+              h('td', null, o.end_at ? new Date(o.end_at * 1000).toLocaleString('zh-CN', { hour12: false }) : '-'),
+              h('td', { style: 'max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, o.last_msg || '-'),
+            ]))),
+          ]))))
+      } catch (e) {
+        ordersBox.replaceChildren(h('div', { class: 'error' }, '订单加载失败：' + e.message))
+      }
+    })()
+
+    panel.replaceChildren(panel2)
+  }
+
+  function qdPriceInput(label, value, plan) {
+    const input = h('input', { class: 'input', type: 'number', step: '0.01', min: '0', value: value, style: 'width:130px' })
+    return h('div', { class: 'field' }, [
+      h('label', null, label),
+      h('div', { style: 'display:flex;gap:8px' }, [
+        input,
+        h('button', { class: 'btn btn-sm', onclick: async () => {
+          const v = parseFloat(input.value)
+          if (isNaN(v) || v < 0) { notify('价格不合法', true); return }
+          try {
+            settings = await adminApi.qdSetPrice(plan, v)
+            notify('已保存：' + label + ' ' + v + ' 积分')
+            draw()
+          } catch (err) { notify(err.message, true) }
+        } }, '保存'),
+      ]),
+    ])
+  }
+
+  load()
+}
+
+function qdAdminBadge(status) {
+  const map = {
+    processing: ['badge-progress', '开通中'],
+    pending_on: ['badge-progress', '待上号'],
+    active: ['badge-done', '监控中'],
+    done: ['badge-done', '已结束'],
+    error: ['badge-banned', '已失败'],
+  }
+  const [cls, label] = map[status] || ['badge-gray', status]
+  return h('span', { class: `badge ${cls}` }, label)
 }
 
 /* ==================== 启动 ==================== */

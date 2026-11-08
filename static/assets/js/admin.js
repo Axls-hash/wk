@@ -366,23 +366,21 @@ function renderMorePrices(panel) {
 
   function drawFront() {
     if (!state.front.length) {
-      frontBody.replaceChildren(h('tr', null, h('td', { colSpan: 4 }, h('div', { class: 'empty' }, '还没有前台分类：先点「新建分类」，再勾选商品挂上去'))))
+      frontBody.replaceChildren(h('tr', null, h('td', { colSpan: 4 }, h('div', { class: 'empty' }, '还没有前台分类：先点「加平台」，再勾选商品并自己填售价'))))
       return
     }
     frontBody.replaceChildren(...state.front.map((c) => {
-      const mult = Number(c.price_mult) > 0 ? Number(c.price_mult) : 1
       const badge = c.count > 0
         ? h('span', { class: 'badge badge-done' }, `前台 ${c.count} 项`)
         : h('span', { class: 'badge badge-gray' }, '未挂商品')
       return h('tr', null, [
         h('td', { style: 'font-weight:700' }, c.name),
-        h('td', { class: 'mono' }, `${mult}×`),
         h('td', { class: 'mono' }, String(c.total || 0)),
         h('td', null, badge),
         h('td', null, [
           h('button', { class: 'btn btn-sm btn-primary', onclick: () => openPicker(c) }, '选项目上架'),
           ' ',
-          h('button', { class: 'btn btn-sm', onclick: () => editFront(c) }, '改名/倍速'),
+          h('button', { class: 'btn btn-sm', onclick: () => editFront(c) }, '改名'),
           ' ',
           h('button', { class: 'btn btn-sm btn-danger', onclick: () => delFront(c) }, '删除'),
         ]),
@@ -395,13 +393,9 @@ function renderMorePrices(panel) {
     if (name == null) return
     const n = name.trim()
     if (!n) { notify('名称不能为空', true); return }
-    const multRaw = prompt('倍速（售价=进价×倍速，如 1.5）', '1')
-    if (multRaw == null) return
-    const mult = parseFloat(multRaw)
-    if (!(mult > 0)) { notify('倍速需大于 0', true); return }
     try {
-      await adminApi.createFrontCategory(n, 0, mult)
-      notify(`已创建「${n}」· ${mult}×`)
+      await adminApi.createFrontCategory(n, 0, 1)
+      notify(`已创建「${n}」`)
       await loadFront()
     } catch (e) { notify(e.message, true) }
   }
@@ -411,13 +405,9 @@ function renderMorePrices(panel) {
     if (name == null) return
     const n = name.trim()
     if (!n) return
-    const multRaw = prompt('倍速（售价=进价×倍速；改完会重算已挂商品售价）', String(c.price_mult || 1))
-    if (multRaw == null) return
-    const mult = parseFloat(multRaw)
-    if (!(mult > 0)) { notify('倍速需大于 0', true); return }
     try {
-      await adminApi.updateFrontCategory(c.id, { name: n, price_mult: mult })
-      notify('已保存（已按倍速重算挂载商品售价）')
+      await adminApi.updateFrontCategory(c.id, { name: n })
+      notify('已保存')
       await loadFront()
     } catch (e) { notify(e.message, true) }
   }
@@ -431,7 +421,7 @@ function renderMorePrices(panel) {
     } catch (e) { notify(e.message, true) }
   }
 
-  // 弹窗：从同步库勾选商品，挂到某个前台分类并上架
+  // 弹窗：勾选商品上架，售价自己填（不用倍率）
   async function openPicker(cat) {
     let attached = new Set()
     try {
@@ -439,7 +429,8 @@ function renderMorePrices(panel) {
       ;(d.cids || []).forEach((id) => attached.add(Number(id)))
     } catch (e) { notify(e.message, true); return }
 
-    const st = { q: '', fenlei: '', page: 1, data: null, selected: new Set(attached) }
+    // priceDrafts: cid → 用户填的售价（元）
+    const st = { q: '', fenlei: '', page: 1, data: null, selected: new Set(attached), priceDrafts: new Map(), known: new Map() }
     const listBody = h('tbody')
     const tip = h('div', { class: 'tip' }, '')
     const srcSel = h('select', { onchange: (e) => { st.fenlei = e.target.value; st.page = 1; reload() } }, [h('option', { value: '' }, '全部货源')])
@@ -448,59 +439,103 @@ function renderMorePrices(panel) {
     qEl.addEventListener('input', debounce(() => { st.q = qEl.value; st.page = 1; reload() }, 300))
     const pagerWrap = h('div', { class: 'pager' })
 
+    const displayPrice = (it) => {
+      const cid = Number(it.cid)
+      if (st.priceDrafts.has(cid)) return st.priceDrafts.get(cid)
+      return it.price_yuan > 0 ? it.price_yuan : ''
+    }
+
     async function reload() {
       tip.textContent = '加载中…'
       try {
         st.data = await adminApi.moreProducts({ q: st.q.trim(), fenlei: st.fenlei, page: st.page, page_size: 30 })
-        tip.textContent = `已勾选 ${st.selected.size} 项 · 库内共 ${st.data.total} 项（同步商品不会自动上前台）`
+        tip.textContent = `已勾选 ${st.selected.size} 项 · 库内共 ${st.data.total} 项 · 请自己填售价`
         listBody.replaceChildren(...(st.data.items || []).map((it) => {
-          const ck = h('input', { type: 'checkbox', checked: st.selected.has(Number(it.cid)) || undefined })
+          const cid = Number(it.cid)
+          st.known.set(cid, it)
+          const priceInp = h('input', {
+            class: 'input', type: 'number', step: '0.01', min: '0',
+            value: displayPrice(it) === '' ? '' : String(displayPrice(it)),
+            placeholder: '自己填售价',
+            style: 'width:96px;padding:4px 6px',
+          })
+          const ck = h('input', { type: 'checkbox', checked: st.selected.has(cid) || undefined })
           ck.addEventListener('change', () => {
-            if (ck.checked) st.selected.add(Number(it.cid))
-            else st.selected.delete(Number(it.cid))
-            tip.textContent = `已勾选 ${st.selected.size} 项 · 库内共 ${st.data.total} 项`
+            if (ck.checked) st.selected.add(cid)
+            else st.selected.delete(cid)
+            tip.textContent = `已勾选 ${st.selected.size} 项 · 库内共 ${st.data.total} 项 · 请自己填售价`
+          })
+          priceInp.addEventListener('input', () => {
+            const v = parseFloat(priceInp.value)
+            if (!Number.isNaN(v) && v >= 0) st.priceDrafts.set(cid, v)
+            else st.priceDrafts.delete(cid)
+            if (!st.selected.has(cid) && priceInp.value !== '') {
+              ck.checked = true
+              st.selected.add(cid)
+            }
           })
           return h('tr', null, [
             h('td', null, ck),
             h('td', { class: 'mono' }, it.cid),
-            h('td', { class: 'wrap', style: 'max-width:280px' }, it.name),
+            h('td', { class: 'wrap', style: 'max-width:240px' }, it.name),
             h('td', null, fenleiName(it.fenlei)),
-            h('td', { class: 'mono' }, yuan(it.price_yuan)),
+            h('td', { class: 'mono' }, yuan(it.base_yuan)),
+            h('td', null, priceInp),
           ])
         }))
         if (!(st.data.items || []).length) {
-          listBody.replaceChildren(h('tr', null, h('td', { colSpan: 5 }, h('div', { class: 'empty' }, '没有商品，请先在看板同步'))))
+          listBody.replaceChildren(h('tr', null, h('td', { colSpan: 6 }, h('div', { class: 'empty' }, '没有商品，请先在看板同步'))))
         }
         pagerWrap.replaceChildren(pagerEl(st.page, (p) => { st.page = p; reload() }, st.data.total, 30))
       } catch (e) { tip.textContent = e.message }
     }
 
-    const saveBtn = h('button', { class: 'btn btn-primary', type: 'button' }, '保存挂载并上架')
+    const saveBtn = h('button', { class: 'btn btn-primary', type: 'button' }, '保存上架与价格')
     saveBtn.onclick = async () => {
+      // 新勾选的必须自己填了售价
+      const missing = [...st.selected].filter((cid) => {
+        if (attached.has(cid) && !st.priceDrafts.has(cid)) return false
+        if (st.priceDrafts.has(cid) && st.priceDrafts.get(cid) > 0) return false
+        const it = st.known.get(cid)
+        return !(it && it.price_yuan > 0)
+      })
+      if (missing.length) {
+        notify(`有 ${missing.length} 项还没填售价，请自己填好再保存`, true)
+        return
+      }
       saveBtn.disabled = true
       try {
         const next = [...st.selected]
         const prev = [...attached]
         const toAdd = next.filter((id) => !attached.has(id))
         const toDel = prev.filter((id) => !st.selected.has(id))
+        // 先写价，再挂载（挂载不再用倍率改价）
+        let priced = 0
+        for (const [cid, yuanVal] of st.priceDrafts) {
+          if (!st.selected.has(cid)) continue
+          if (!(yuanVal > 0) || yuanVal > 10000) continue
+          await adminApi.setMorePrice(cid, yuanVal)
+          priced++
+        }
         if (toAdd.length) await adminApi.addFrontCategoryItems(cat.id, toAdd)
         if (toDel.length) await adminApi.removeFrontCategoryItems(cat.id, toDel)
-        notify(`「${cat.name}」已更新：+${toAdd.length} / -${toDel.length}`)
+        notify(`「${cat.name}」已更新：+${toAdd.length} / -${toDel.length}` + (priced ? ` · 定价 ${priced} 项` : ''))
         mask.remove()
         await loadFront()
+        await loadProducts()
       } catch (e) {
         notify(e.message, true)
         saveBtn.disabled = false
       }
     }
 
-    const mask = modalMask(h('div', { class: 'modal', style: 'width:min(720px,96vw);max-height:88vh;display:flex;flex-direction:column' }, [
+    const mask = modalMask(h('div', { class: 'modal', style: 'width:min(820px,96vw);max-height:88vh;display:flex;flex-direction:column' }, [
       h('h3', null, `给「${cat.name}」选项目上架`),
-      h('div', { class: 'tip', style: 'margin-bottom:8px' }, '勾选要出现在这个前台分类里的商品；保存后才会上架到用户端。同步不会自动全上架。'),
+      h('div', { class: 'tip', style: 'margin-bottom:8px' }, '勾选项目，右侧自己填售价；不设倍率。新上架的必须有售价才能保存。'),
       h('div', { class: 'toolbar', style: 'margin-bottom:8px' }, [qEl, srcSel]),
       tip,
       h('div', { class: 'table-wrap', style: 'flex:1;overflow:auto;max-height:50vh;margin-top:8px' }, h('table', null, [
-        h('thead', null, h('tr', null, ['', 'ID', '商品', '货源', '售价'].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, ['', 'ID', '商品', '货源', '进价', '售价'].map((x) => h('th', null, x)))),
         listBody,
       ])),
       pagerWrap,
@@ -567,12 +602,12 @@ function renderMorePrices(panel) {
 
   panel.appendChild(h('div', { class: 'card' }, [
     h('h2', null, '前台分类（用户看到的平台）'),
-    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '同步不会自动上架。新建分类时可设「倍速」（售价=进价×倍速），再点「选项目上架」勾选商品。'),
+    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '同步不会自动上架。加平台后点「选项目上架」：勾选商品并自己填售价，不用倍率。'),
     h('div', { class: 'toolbar', style: 'margin-bottom:10px' }, [
-      h('button', { class: 'btn btn-primary btn-sm', onclick: createFront }, '＋ 新建分类'),
+      h('button', { class: 'btn btn-primary btn-sm', onclick: createFront }, '＋ 加平台/分类'),
     ]),
     h('div', { class: 'table-wrap' }, h('table', null, [
-      h('thead', null, h('tr', null, ['分类名', '倍速', '已挂载', '状态', '操作'].map((x) => h('th', null, x)))),
+      h('thead', null, h('tr', null, ['分类名', '已挂载', '状态', '操作'].map((x) => h('th', null, x)))),
       frontBody,
     ])),
   ]))

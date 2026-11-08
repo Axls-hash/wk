@@ -193,7 +193,7 @@ func categoryMult(categoryID int64) float64 {
 	return clampMult(m)
 }
 
-// AddItems 追加挂载并上架；按分类倍速改售价。
+// AddItems 追加挂载并上架；不改售价（由管理员在上架时自行填写）。
 func AddItems(categoryID int64, cids []int64) error {
 	if categoryID <= 0 {
 		return fmt.Errorf("分类无效")
@@ -202,7 +202,6 @@ func AddItems(categoryID int64, cids []int64) error {
 	if err := store.DB.QueryRow(`SELECT COUNT(*) FROM front_categories WHERE id=?`, categoryID).Scan(&n); err != nil || n == 0 {
 		return fmt.Errorf("分类不存在")
 	}
-	mult := categoryMult(categoryID)
 	now := float64(time.Now().UnixNano()) / 1e9
 	ins := `INSERT OR IGNORE INTO front_category_items(category_id, cid) VALUES(?,?)`
 	if store.IsMySQL() {
@@ -215,11 +214,9 @@ func AddItems(categoryID int64, cids []int64) error {
 		_, _ = store.DB.Exec(ins, categoryID, cid)
 		_, _ = store.DB.Exec(`
 			UPDATE more_products SET
-				price_yuan = ROUND(base_yuan * ?, 2),
-				price_override = 1,
-				status = 1,
+				status = CASE WHEN price_yuan>0 THEN 1 ELSE status END,
 				updated_at = ?
-			WHERE cid=? AND base_yuan>0`, mult, now, cid)
+			WHERE cid=?`, now, cid)
 	}
 	productcache.Invalidate()
 	sync.LoadCatalogFromDB()

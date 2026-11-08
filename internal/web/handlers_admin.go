@@ -1140,7 +1140,8 @@ func HandleAdminSetMoreProductPrice(w http.ResponseWriter, r *http.Request) {
 	var name string
 	_ = store.DB.QueryRow(`SELECT name FROM more_products WHERE cid=?`, cid).Scan(&name)
 	if yuan > 0 {
-		if _, err := store.DB.Exec(`UPDATE more_products SET price_yuan=?, price_override=1 WHERE cid=?`, yuan, cid); err != nil {
+		// 有售价即可上架展示；挂载关系仍由前台分类控制
+		if _, err := store.DB.Exec(`UPDATE more_products SET price_yuan=?, price_override=1, status=1 WHERE cid=?`, yuan, cid); err != nil {
 			errJSON(w, 500, "保存失败，请稍后再试")
 			return
 		}

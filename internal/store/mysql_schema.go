@@ -61,6 +61,8 @@ func migrateMySQL() error {
 		`CREATE TABLE IF NOT EXISTS qd_orders (order_id VARCHAR(32) PRIMARY KEY, user_id BIGINT NOT NULL, phone VARCHAR(20) NOT NULL, enc_pass LONGTEXT NOT NULL DEFAULT '', plan VARCHAR(8) NOT NULL DEFAULT 'week', engine_order_id VARCHAR(64) NOT NULL DEFAULT '', token VARCHAR(64) NOT NULL DEFAULT '', status VARCHAR(16) NOT NULL DEFAULT 'processing', engine_status VARCHAR(16) NOT NULL DEFAULT '', name VARCHAR(64) NOT NULL DEFAULT '', uid VARCHAR(32) NOT NULL DEFAULT '', sign_ok INT NOT NULL DEFAULT 0, sign_fail INT NOT NULL DEFAULT 0, push_url VARCHAR(500) NOT NULL DEFAULT '', last_msg VARCHAR(500) NOT NULL DEFAULT '', end_at DOUBLE NOT NULL DEFAULT 0, amount_fen BIGINT NOT NULL DEFAULT 0, created_at DOUBLE NOT NULL, updated_at DOUBLE NOT NULL, KEY idx_qd_user(user_id, created_at), KEY idx_qd_phone(phone), KEY idx_qd_status(status)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		// 学习通自动签到：管理端开关 + 卡型零售价（键值表；缺行按开启/默认价处理）
 		`CREATE TABLE IF NOT EXISTS qd_settings (name VARCHAR(32) PRIMARY KEY, value VARCHAR(200) NOT NULL DEFAULT '', updated_at DOUBLE NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 系统对接：易支付 + 天河课程 API（后台可改；覆盖 .env）
+		`CREATE TABLE IF NOT EXISTS system_settings (name VARCHAR(64) PRIMARY KEY, value TEXT NOT NULL, updated_at DOUBLE NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 	statements = append(statements, `ALTER TABLE orders MODIFY password TEXT NOT NULL`, `ALTER TABLE course_submissions MODIFY password TEXT NOT NULL`, `ALTER TABLE sxdk_orders MODIFY password TEXT NOT NULL`)
 	for _, statement := range statements {

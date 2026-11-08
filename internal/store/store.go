@@ -379,6 +379,13 @@ func migrate() error {
 		updated_at REAL NOT NULL
 	)`)
 
+	// 系统对接：易支付 + 天河课程 API（后台可改；覆盖 .env）
+	mustExec(`CREATE TABLE IF NOT EXISTS system_settings (
+		name VARCHAR(64) PRIMARY KEY,
+		value TEXT NOT NULL DEFAULT '',
+		updated_at REAL NOT NULL
+	)`)
+
 	// ---- 旧库补列（与 Python 版 _migrate_sqlite 一致；新库 create 已含全部列）----
 	addColumn("more_products", "base_yuan", "REAL NOT NULL DEFAULT 0")         // 进货价（=天河价×倍率，同步始终刷新）
 	addColumn("more_products", "price_override", "INTEGER NOT NULL DEFAULT 0") // 1=管理员自定义售价（同步不再覆盖 price_yuan）

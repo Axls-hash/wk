@@ -25,6 +25,7 @@ import (
 	"daili-go/internal/proxy"
 	"daili-go/internal/store"
 	"daili-go/internal/sync"
+	"daili-go/internal/syscfg"
 	"daili-go/internal/tasks"
 	"daili-go/internal/web"
 )
@@ -69,6 +70,7 @@ func run() {
 			panic(err)
 		}
 	}
+	syscfg.LoadFromDB() // 后台保存的支付/天河对接覆盖 .env（库优先）
 	tasks.Init()
 	store.StartBackupLoop(filepath.Join(root, "backups"), 24*time.Hour)
 	web.ResubmitProcessingOrders() // 启动时重放中断的下单，防重启丢单
@@ -201,6 +203,8 @@ func run() {
 	mux.HandleFunc("GET /api/admin/audit-logs", web.HandleAdminAuditLogs)
 	mux.HandleFunc("GET /api/admin/login-logs", web.HandleAdminLoginLogs)
 	mux.HandleFunc("POST /api/more/sync", web.HandleMoreSync)
+	mux.HandleFunc("GET /api/admin/syscfg", web.HandleAdminSyscfg)
+	mux.HandleFunc("POST /api/admin/syscfg", web.HandleAdminSyscfgSave)
 
 	// ---- 前端静态页 + 页面分发（static/ 为可编辑源文件）----
 	// 与 daili-go 不同：不再 embed，直接读磁盘；页面按路径分发，

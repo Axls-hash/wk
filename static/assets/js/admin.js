@@ -44,6 +44,7 @@ const AUDIT_ACTIONS = {
   'qd.price.set': '设置自动签到售价',
   'qd.enable': '开启自动签到功能',
   'qd.disable': '关闭自动签到功能',
+  'syscfg.save': '保存支付/对接配置',
   'announcement.create': '发布公告',
   'announcement.update': '更新公告',
   'announcement.delete': '删除公告',
@@ -132,6 +133,7 @@ function renderTab() {
   else if (t === 'orders') renderOrders(panel)
   else if (t === 'users') renderUsers(panel)
   else if (t === 'codes') renderCodes(panel)
+  else if (t === 'syscfg') renderSyscfg(panel)
   else if (t === 'logs') renderLogs(panel)
 }
 
@@ -1084,6 +1086,135 @@ function renderCodes(panel) {
 }
 
 /* ==================== 流水与审计 ==================== */
+
+/* ==================== 支付与对接（易支付 + 天河课程 API） ==================== */
+
+function renderSyscfg(panel) {
+  panel.replaceChildren(h('div', { class: 'tip' }, '对接配置加载中…'))
+
+  async function load() {
+    try {
+      const data = await adminApi.syscfg()
+      draw(data)
+    } catch (e) {
+      panel.replaceChildren(h('div', { class: 'error' }, '加载失败：' + e.message))
+    }
+  }
+
+  function field(label, input, tip) {
+    return h('label', { style: 'display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1' }, [
+      h('span', { style: 'font-size:13px;color:var(--text-muted)' }, label),
+      input,
+      tip ? h('span', { class: 'tip', style: 'margin:0' }, tip) : null,
+    ])
+  }
+
+  function textInput(name, value, opts = {}) {
+    return h('input', {
+      class: 'input',
+      name,
+      type: opts.type || 'text',
+      value: value || '',
+      placeholder: opts.placeholder || '',
+      autocomplete: 'off',
+      style: 'width:100%',
+    })
+  }
+
+  function draw(data) {
+    const siteURL = textInput('site_url', data.site_url, { placeholder: 'https://你的域名' })
+    const epayURL = textInput('epay_api_url', data.epay_api_url, { placeholder: 'https://pay.example.com' })
+    const epayPID = textInput('epay_pid', data.epay_pid, { placeholder: '商户 ID' })
+    const epayKey = textInput('epay_key', '', {
+      type: 'password',
+      placeholder: data.epay_key_set ? '已配置，留空则不修改' : '易支付商户密钥',
+    })
+    const epayType = h('select', { class: 'input', name: 'epay_type', style: 'width:100%' }, [
+      h('option', { value: 'wxpay', selected: (data.epay_type || 'wxpay') === 'wxpay' || undefined }, '微信 wxpay'),
+      h('option', { value: 'alipay', selected: data.epay_type === 'alipay' || undefined }, '支付宝 alipay'),
+      h('option', { value: 'qqpay', selected: data.epay_type === 'qqpay' || undefined }, 'QQ钱包 qqpay'),
+    ])
+    const skyURL = textInput('skyriver_url', data.skyriver_url, { placeholder: 'https://天河域名（不要带 /api.php）' })
+    const skyUID = textInput('skyriver_uid', data.skyriver_uid, { placeholder: '对接 uid' })
+    const skyKey = textInput('skyriver_key', '', {
+      type: 'password',
+      placeholder: data.skyriver_key_set ? '已配置，留空则不修改' : '对接 key',
+    })
+    const coursePrice = textInput('course_price', data.course_price, { placeholder: '3.00' })
+
+    const saveBtn = h('button', { class: 'btn', type: 'button' }, '保存配置')
+    saveBtn.onclick = async () => {
+      saveBtn.disabled = true
+      saveBtn.textContent = '保存中…'
+      try {
+        const body = {
+          site_url: siteURL.value.trim(),
+          epay_api_url: epayURL.value.trim(),
+          epay_pid: epayPID.value.trim(),
+          epay_key: epayKey.value,
+          epay_type: epayType.value,
+          skyriver_url: skyURL.value.trim(),
+          skyriver_uid: skyUID.value.trim(),
+          skyriver_key: skyKey.value,
+          course_price: coursePrice.value.trim(),
+        }
+        const next = await adminApi.saveSyscfg(body)
+        notify('已保存，立即生效（无需重启）')
+        epayKey.value = ''
+        skyKey.value = ''
+        draw(next)
+      } catch (e) {
+        notify(e.message, true)
+        saveBtn.disabled = false
+        saveBtn.textContent = '保存配置'
+      }
+    }
+
+    panel.replaceChildren(h('div', null, [
+      h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+        h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
+          h('h2', { style: 'font-size:16px;margin:0' }, '易支付（在线充值/付款）'),
+          h('span', { class: 'badge ' + (data.pay_enabled ? 'badge-done' : 'badge-banned') },
+            data.pay_enabled ? '已启用' : '未启用'),
+        ]),
+        h('div', { class: 'tip', style: 'margin-bottom:12px' },
+          '三项都填齐才会开启在线支付。站点地址用于回调；密钥留空表示不改。'),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
+          field('站点地址 SITE_URL', siteURL, '回调/跳转用，填公网 https 域名'),
+          field('易支付接口地址', epayURL),
+        ]),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+          field('商户 PID', epayPID),
+          field('商户密钥 KEY', epayKey),
+          field('默认支付方式', epayType),
+        ]),
+      ]),
+      h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+        h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
+          h('h2', { style: 'font-size:16px;margin:0' }, '天河课程 API 对接'),
+          h('span', { class: 'badge ' + (data.skyriver_ok ? 'badge-done' : 'badge-banned') },
+            data.skyriver_ok ? '已对接' : '未对接'),
+        ]),
+        h('div', { class: 'tip', style: 'margin-bottom:12px' },
+          '查课/下单走天河 api.php。地址只填根域名，不要带 /api.php。密钥留空表示不改。'),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
+          field('对接地址 SKYRIVER_URL', skyURL),
+          field('对接 UID', skyUID),
+          field('对接 KEY', skyKey),
+        ]),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+          field('默认课程单价（元/门）', coursePrice, '未单独改价的平台走这个默认价'),
+        ]),
+      ]),
+      h('div', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap' }, [
+        saveBtn,
+        h('span', { class: 'tip' }, data.source === 'db' ? '当前以数据库配置为准（可覆盖环境变量）' : '尚未保存过，当前来自环境变量/.env'),
+      ]),
+    ]))
+  }
+
+  load()
+}
 
 function renderLogs(panel) {
   const state = { tab: logsActiveTab, p1: 1, p2: 1, p3: 1, p4: 1, d: {} }

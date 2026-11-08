@@ -185,6 +185,7 @@ func run() {
 	mux.HandleFunc("GET /api/admin/more-products", web.HandleAdminMoreProducts)
 	mux.HandleFunc("POST /api/admin/more-products/{cid}/price", web.HandleAdminSetMoreProductPrice)
 	mux.HandleFunc("POST /api/admin/more-products/{cid}/status", web.HandleAdminSetMoreProductStatus)
+	mux.HandleFunc("POST /api/admin/more-products/{cid}/content", web.HandleAdminSetMoreProductContent)
 	mux.HandleFunc("GET /api/admin/more-fenlei", web.HandleAdminMoreFenlei)
 	mux.HandleFunc("POST /api/admin/more-fenlei/{fenlei}/hide", web.HandleAdminHideMoreFenlei)
 	mux.HandleFunc("POST /api/admin/more-fenlei/{fenlei}/show", web.HandleAdminShowMoreFenlei)

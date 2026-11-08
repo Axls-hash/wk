@@ -123,6 +123,33 @@ async function request(method, path, body, timeout = TIMEOUT) {
   return res.status === 204 ? null : res.json()
 }
 
+// requestForm multipart 上传（FormData 直传，浏览器自动设 boundary）。
+async function requestForm(method, path, file, timeout = TIMEOUT) {
+  const headers = {}
+  const csrf = document.cookie.split(`;`).map(v => v.trim()).find(v => v.startsWith("csrf_token="))?.slice(11) || ""
+  if (csrf) headers["X-CSRF-Token"] = csrf
+  const fd = new FormData()
+  fd.append('file', file)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+  let res
+  try {
+    res = await fetch(`/api${path}`, { method, headers, body: fd, signal: controller.signal })
+  } catch (e) {
+    throw e.name === 'AbortError' ? new Error('请求超时，请重试') : e
+  } finally {
+    clearTimeout(timer)
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    const msg = typeof data.detail === 'string' && data.detail ? data.detail : `上传失败 (${res.status})`
+    const err = new Error(msg)
+    err.status = res.status
+    throw err
+  }
+  return res.json()
+}
+
 // 用户端 API（与后端路由一一对应）
 const api = {
   platforms: () => request('GET', '/platforms'),
@@ -150,6 +177,28 @@ const api = {
   sxdkCreateOrder: (data) => request('POST', '/sxdk/orders', data),
   sxdkOrders: () => request('GET', '/sxdk/orders'),
   sxdkSync: () => request('POST', '/sxdk/sync'),
+  // 我爱运动（syy，套娃下游对接天河 syytianheban）
+  syyProjects: () => request('GET', '/syy/projects'),
+  syyOpen: (projectId) => request('POST', '/syy/open', { project_id: projectId }, 45000),
+  syyCreateOrder: (data) => request('POST', '/syy/orders', data, 45000),
+  syyOrders: () => request('GET', '/syy/orders'),
+  syyBalance: (projectId) => request('GET', `/syy/balance?project_id=${encodeURIComponent(projectId)}`),
+  syyWithdraw: (data) => request('POST', '/syy/withdraw', data, 45000),
+  // 病例（bingli，独立模块：模板/预览图/下单/订单图片）
+  bingApplications: () => request('GET', '/bing/applications'),
+  bingApplication: (id) => request('GET', `/bing/applications/${encodeURIComponent(id)}`),
+  bingCreateOrder: (data) => request('POST', '/bing/orders', data, 120000),
+  bingOrders: () => request('GET', '/bing/orders'),
+  bingOrder: (id) => request('GET', `/bing/orders/${encodeURIComponent(id)}`),
+  bingRetryOrder: (id) => request('POST', `/bing/orders/${encodeURIComponent(id)}/retry`, {}, 120000),
+  // 学习通自动签到（qd，独立模块：卡型/下单/列表/详情/重新上号/人脸）
+  qdPlans: () => request('GET', '/qd/plans'),
+  qdCreateOrder: (data) => request('POST', '/qd/orders', data, 120000),
+  qdOrders: () => request('GET', '/qd/orders'),
+  qdOrder: (id) => request('GET', `/qd/orders/${encodeURIComponent(id)}`),
+  qdRelogin: (id, pass) => request('POST', `/qd/orders/${encodeURIComponent(id)}/relogin`, { pass: pass || '' }, 120000),
+  qdPhoto: (id, file) => requestForm('POST', `/qd/orders/${encodeURIComponent(id)}/photo`, file, 120000),
+  qdPush: (id, pushUrl) => request('POST', `/qd/orders/${encodeURIComponent(id)}/push`, { push_url: pushUrl }),
 }
 
 // 管理端 API
@@ -163,6 +212,31 @@ const adminApi = {
   setPrice: (platform, priceYuan) => request('POST', `/admin/prices/${encodeURIComponent(platform)}`, { price_yuan: priceYuan }),
   moreProducts: (params) => request('GET', `/admin/more-products${qs(params)}`), // 综合网课同步商品（管理改价）
   setMorePrice: (cid, priceYuan) => request('POST', `/admin/more-products/${cid}/price`, { price_yuan: priceYuan }),
+  setMoreStatus: (cid, status) => request('POST', `/admin/more-products/${cid}/status`, { status }),
+  setMoreContent: (cid, content) => request('POST', `/admin/more-products/${cid}/content`, { content }),
+  moreFenlei: () => request('GET', '/admin/more-fenlei'),
+  hideMoreFenlei: (fenlei) => request('POST', `/admin/more-fenlei/${encodeURIComponent(fenlei)}/hide`),
+  showMoreFenlei: (fenlei) => request('POST', `/admin/more-fenlei/${encodeURIComponent(fenlei)}/show`),
+  frontCategories: () => request('GET', '/admin/front-categories'),
+  createFrontCategory: (name, sortOrder = 0, priceMult = 1) => request('POST', '/admin/front-categories', { name, sort_order: sortOrder, price_mult: priceMult }),
+  updateFrontCategory: (id, body) => request('PUT', `/admin/front-categories/${id}`, body),
+  skyriverBalance: () => request('GET', '/admin/syscfg/skyriver-balance'),
+  deleteFrontCategory: (id) => request('DELETE', `/admin/front-categories/${id}`),
+  frontCategoryItems: (id) => request('GET', `/admin/front-categories/${id}/items`),
+  addFrontCategoryItems: (id, cids) => request('POST', `/admin/front-categories/${id}/items`, { cids }),
+  removeFrontCategoryItems: (id, cids) => request('POST', `/admin/front-categories/${id}/items/remove`, { cids }),
+  syyProjectsAdmin: () => request('GET', '/admin/syy-projects'), // 运动项目售价一览
+  syySetPrice: (id, priceYuan) => request('POST', `/admin/syy-projects/${id}/price`, { price_yuan: priceYuan }),
+  bingSettings: () => request('GET', '/admin/bing/settings'), // 病例开关状态
+  bingSetEnabled: (enabled) => request('POST', '/admin/bing/settings', { enabled }),
+  bingApplicationsAdmin: () => request('GET', '/admin/bing/applications'), // 病例模板售价一览
+  bingSetPrice: (id, priceYuan) => request('POST', `/admin/bing/applications/${encodeURIComponent(id)}/price`, { price_yuan: priceYuan }),
+  qdSettings: () => request('GET', '/admin/qd/settings'), // 自动签到开关/价格/引擎余额
+  qdSetEnabled: (enabled) => request('POST', '/admin/qd/settings', { enabled }),
+  qdSetPrice: (plan, points) => request('POST', '/admin/qd/price', { plan, points }),
+  qdOrdersAdmin: () => request('GET', '/admin/qd/orders'), // 自动签到订单列表
+  syscfg: () => request('GET', '/admin/syscfg'), // 支付 + 天河对接
+  saveSyscfg: (data) => request('POST', '/admin/syscfg', data),
   users: (params) => request('GET', `/admin/users${qs(params)}`),
   adjustPoints: (id, delta, reason) => request('POST', `/admin/users/${id}/points`, { delta, reason }),
   banUser: (id) => request('POST', `/admin/users/${id}/ban`),
@@ -173,6 +247,7 @@ const adminApi = {
   setProcessStatus: (id, status) => request('PATCH', `/admin/orders/${id}`, { process_status: status }),
   exportOrdersUrl: (params) => `/api/admin/orders/export.csv${qs(params)}`,
   orderCredentials: (id) => request('GET', `/admin/orders/${id}/credentials`),
+  pauseOrder: (id, kcids) => request('POST', `/admin/orders/${id}/pause`, kcids ? { kcids } : {}),
   codes: (params) => request('GET', `/admin/redeem-codes${qs(params)}`),
   generateCodes: (count, points, note) => request('POST', '/admin/redeem-codes', { count, points, note }),
   disableCode: (code) => request('POST', `/admin/redeem-codes/${encodeURIComponent(code)}/disable`),

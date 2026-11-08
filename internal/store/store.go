@@ -250,6 +250,7 @@ func migrate() error {
 	)`)
 	mustExec(`CREATE INDEX IF NOT EXISTS idx_more_products_fenlei ON more_products(fenlei)`)
 	mustExec(`CREATE INDEX IF NOT EXISTS idx_more_products_name ON more_products(name)`)
+	addColumn("more_products", "content_override", "INTEGER NOT NULL DEFAULT 0") // 1=管理员改过介绍，同步不覆盖
 
 	// 前台自定义分类：管理员自建名称，再勾选同步来的商品挂上去才展示。
 	mustExec(`CREATE TABLE IF NOT EXISTS front_categories (

@@ -41,6 +41,7 @@ const AUDIT_ACTIONS = {
   'more.fenlei.show': '恢复货源分类',
   'more.status.on': '上架商品',
   'more.status.off': '下架商品',
+  'more.content.set': '改商品介绍',
   'frontcat.create': '新建前台分类',
   'frontcat.update': '改前台分类',
   'frontcat.delete': '删前台分类',
@@ -370,14 +371,16 @@ function renderMorePrices(panel) {
     }
     frontBody.replaceChildren(...state.front.map((c) => {
       const badge = c.count > 0
-        ? h('span', { class: 'badge badge-done' }, `前台 ${c.count} 项`)
-        : h('span', { class: 'badge badge-gray' }, '未挂商品')
+        ? h('span', { class: 'badge badge-done' }, `上架 ${c.count} 项`)
+        : h('span', { class: 'badge badge-gray' }, '未上架')
       return h('tr', null, [
         h('td', { style: 'font-weight:700' }, c.name),
         h('td', { class: 'mono' }, String(c.total || 0)),
         h('td', null, badge),
         h('td', null, [
-          h('button', { class: 'btn btn-sm btn-primary', onclick: () => openPicker(c) }, '选项目上架'),
+          h('button', { class: 'btn btn-sm btn-primary', onclick: () => openManage(c) }, '管理商品'),
+          ' ',
+          h('button', { class: 'btn btn-sm', onclick: () => openPicker(c) }, '选项目'),
           ' ',
           h('button', { class: 'btn btn-sm', onclick: () => editFront(c) }, '改名'),
           ' ',
@@ -385,6 +388,145 @@ function renderMorePrices(panel) {
         ]),
       ])
     }))
+  }
+
+  // 分类内已挂商品：上下架、改价、改介绍、移除
+  async function openManage(cat) {
+    const listBody = h('tbody')
+    const tip = h('div', { class: 'tip' }, '加载中…')
+
+    async function reload() {
+      tip.textContent = '加载中…'
+      try {
+        const d = await adminApi.frontCategoryItems(cat.id)
+        const items = Array.isArray(d.items) ? d.items : []
+        tip.textContent = items.length
+          ? `共 ${items.length} 项挂载 · 上架中 ${items.filter((x) => x.status === 1).length} 项`
+          : '还没有挂载商品，请先点「选项目」'
+        if (!items.length) {
+          listBody.replaceChildren(h('tr', null, h('td', { colSpan: 6 }, h('div', { class: 'empty' }, '暂无商品'))))
+          return
+        }
+        listBody.replaceChildren(...items.map((it) => {
+          const stBadge = it.status === 1
+            ? h('span', { class: 'badge badge-done' }, '上架中')
+            : h('span', { class: 'badge badge-gray' }, '已下架')
+          const note = (it.content || '').replace(/\s+/g, ' ').slice(0, 48)
+          const noteTip = note ? (note + ((it.content || '').length > 48 ? '…' : '')) : '（无介绍）'
+          return h('tr', null, [
+            h('td', { class: 'mono' }, it.cid),
+            h('td', { class: 'wrap', style: 'max-width:200px' }, [
+              h('div', { style: 'font-weight:600' }, it.name),
+              h('div', { class: 'tip', style: 'margin-top:2px;font-size:12px' }, noteTip),
+            ]),
+            h('td', { class: 'mono' }, yuan(it.price_yuan)),
+            h('td', null, stBadge),
+            h('td', null, [
+              it.status === 1
+                ? h('button', { class: 'btn btn-sm', onclick: () => toggleStatus(it, 0) }, '下架')
+                : h('button', { class: 'btn btn-sm btn-primary', onclick: () => toggleStatus(it, 1) }, '上架'),
+              ' ',
+              h('button', { class: 'btn btn-sm', onclick: () => editContent(it) }, '改介绍'),
+              ' ',
+              h('button', { class: 'btn btn-sm', onclick: () => editItemPrice(it) }, '改价'),
+              ' ',
+              h('button', { class: 'btn btn-sm btn-danger', onclick: () => detachItem(it) }, '移除'),
+            ]),
+          ])
+        }))
+      } catch (e) { tip.textContent = e.message }
+    }
+
+    async function toggleStatus(it, status) {
+      try {
+        await adminApi.setMoreStatus(it.cid, status)
+        notify(status === 1 ? `「${it.name}」已上架` : `「${it.name}」已下架`)
+        await reload()
+        await loadFront()
+      } catch (e) { notify(e.message, true) }
+    }
+
+    async function editContent(it) {
+      const ta = h('textarea', {
+        class: 'input', rows: 8, value: it.content || '',
+        style: 'width:100%;resize:vertical;line-height:1.6;font-size:13px',
+      })
+      const saveBtn = h('button', { class: 'btn btn-primary', type: 'button' }, '保存介绍')
+      const resetBtn = h('button', { class: 'btn', type: 'button' }, '恢复上游介绍')
+      const sub = modalMask(h('div', { class: 'modal', style: 'width:min(560px,96vw)' }, [
+        h('h3', null, `改介绍 · ${it.name}`),
+        h('div', { class: 'tip', style: 'margin-bottom:8px' }, '用户端查课页会展示这段介绍。保存后同步不会覆盖；点「恢复上游介绍」下次同步会拉回原文。'),
+        ta,
+        h('div', { class: 'modal-actions' }, [
+          h('button', { type: 'button', class: 'btn', onclick: () => sub.remove() }, '取消'),
+          resetBtn,
+          saveBtn,
+        ]),
+      ]))
+      saveBtn.onclick = async () => {
+        saveBtn.disabled = true
+        try {
+          await adminApi.setMoreContent(it.cid, ta.value)
+          notify('介绍已保存')
+          sub.remove()
+          await reload()
+        } catch (e) {
+          notify(e.message, true)
+          saveBtn.disabled = false
+        }
+      }
+      resetBtn.onclick = async () => {
+        if (!confirm('确定恢复上游介绍？自定义文案会被清掉。')) return
+        resetBtn.disabled = true
+        try {
+          await adminApi.setMoreContent(it.cid, '')
+          notify('已恢复上游介绍（下次同步生效）')
+          sub.remove()
+          await reload()
+        } catch (e) {
+          notify(e.message, true)
+          resetBtn.disabled = false
+        }
+      }
+    }
+
+    async function editItemPrice(it) {
+      const raw = prompt(`「${it.name}」售价（元）`, it.price_yuan > 0 ? String(it.price_yuan) : '')
+      if (raw == null) return
+      const v = parseFloat(raw)
+      if (!(v > 0) || v > 10000) { notify('请输入 0~10000 的合法售价', true); return }
+      try {
+        await adminApi.setMorePrice(it.cid, v)
+        notify(`售价已改为 ¥${v.toFixed(2)}`)
+        await reload()
+        await loadProducts()
+      } catch (e) { notify(e.message, true) }
+    }
+
+    async function detachItem(it) {
+      if (!confirm(`把「${it.name}」从分类「${cat.name}」移除？不会删除同步库里的商品。`)) return
+      try {
+        await adminApi.removeFrontCategoryItems(cat.id, [it.cid])
+        notify('已移除')
+        await reload()
+        await loadFront()
+      } catch (e) { notify(e.message, true) }
+    }
+
+    const mask = modalMask(h('div', { class: 'modal', style: 'width:min(900px,96vw);max-height:88vh;display:flex;flex-direction:column' }, [
+      h('h3', null, `管理「${cat.name}」商品`),
+      h('div', { class: 'tip', style: 'margin-bottom:8px' }, '这里是本分类已挂载的商品。下架只对用户隐藏；移除会从本分类拿掉。'),
+      tip,
+      h('div', { class: 'table-wrap', style: 'flex:1;overflow:auto;max-height:55vh;margin-top:8px' }, h('table', null, [
+        h('thead', null, h('tr', null, ['ID', '商品 / 介绍', '售价', '状态', '操作'].map((x) => h('th', null, x)))),
+        listBody,
+      ])),
+      h('div', { class: 'modal-actions' }, [
+        h('button', { type: 'button', class: 'btn btn-primary', onclick: () => { mask.remove(); openPicker(cat) } }, '＋ 选项目'),
+        h('button', { type: 'button', class: 'btn', onclick: () => mask.remove() }, '关闭'),
+      ]),
+    ]))
+    reload()
   }
 
   async function createFront() {
@@ -601,7 +743,7 @@ function renderMorePrices(panel) {
 
   panel.appendChild(h('div', { class: 'card' }, [
     h('h2', null, '前台分类（用户看到的平台）'),
-    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '同步不会自动上架。加平台后点「选项目上架」：勾选商品并自己填售价，不用倍率。'),
+    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '同步不会自动上架。加平台 →「选项目」挂商品并填售价 →「管理商品」可上下架、改介绍。'),
     h('div', { class: 'toolbar', style: 'margin-bottom:10px' }, [
       h('button', { class: 'btn btn-primary btn-sm', onclick: createFront }, '＋ 加平台/分类'),
     ]),

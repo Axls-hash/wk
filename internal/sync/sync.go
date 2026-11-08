@@ -224,19 +224,19 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 	// SQLite 不支持 ON DUPLICATE KEY / VALUES()，必须分支写；线上 ALLOW_SQLITE=1 时
 	// 若仍用 MySQL 语法，8144 条会全部 upsert 失败 → inserted=0（用户看到「一个都拉不到」）。
 	// 同步只拉目录/改价：新商品默认下架(status=0)；已有商品保留管理员上架状态，不自动全开。
-	upsertSQL := `INSERT INTO more_products(cid, fenlei, name, price_yuan, base_yuan, price_override, content, status, updated_at)
-		 VALUES(?,?,?,?,?,0,?,0,?)`
+	upsertSQL := `INSERT INTO more_products(cid, fenlei, name, price_yuan, base_yuan, price_override, content, content_override, status, updated_at)
+		 VALUES(?,?,?,?,?,0,?,0,0,?)`
 	if store.IsMySQL() {
 		upsertSQL += ` ON DUPLICATE KEY UPDATE fenlei=VALUES(fenlei), name=VALUES(name),
 			   base_yuan=VALUES(base_yuan),
 			   price_yuan=CASE WHEN price_override=1 THEN price_yuan ELSE VALUES(price_yuan) END,
-			   content=VALUES(content),
+			   content=CASE WHEN content_override=1 THEN content ELSE VALUES(content) END,
 			   updated_at=VALUES(updated_at)`
 	} else {
 		upsertSQL += ` ON CONFLICT(cid) DO UPDATE SET fenlei=excluded.fenlei, name=excluded.name,
 			   base_yuan=excluded.base_yuan,
 			   price_yuan=CASE WHEN more_products.price_override=1 THEN more_products.price_yuan ELSE excluded.price_yuan END,
-			   content=excluded.content,
+			   content=CASE WHEN more_products.content_override=1 THEN more_products.content ELSE excluded.content END,
 			   updated_at=excluded.updated_at`
 	}
 
@@ -545,6 +545,38 @@ func SetProductStatus(cid int64, status int) error {
 		return err
 	}
 	LoadCatalogFromDB()
+	productcache.Invalidate()
+	return nil
+}
+
+// SetProductContent 改商品介绍；content_override=1 后同步不再覆盖。
+// content 空串表示恢复上游介绍（清覆盖标记，下次同步会拉回）。
+func SetProductContent(cid int64, content string) error {
+	if cid <= 0 {
+		return fmt.Errorf("商品无效")
+	}
+	var n int
+	if err := store.DB.QueryRow(`SELECT COUNT(*) FROM more_products WHERE cid=?`, cid).Scan(&n); err != nil || n == 0 {
+		return fmt.Errorf("商品不存在")
+	}
+	now := float64(time.Now().UnixNano()) / 1e9
+	content = strings.TrimSpace(content)
+	if len([]rune(content)) > 4000 {
+		return fmt.Errorf("介绍最多 4000 字")
+	}
+	if content == "" {
+		_, err := store.DB.Exec(`UPDATE more_products SET content_override=0, updated_at=? WHERE cid=?`, now, cid)
+		if err != nil {
+			return err
+		}
+	} else {
+		_, err := store.DB.Exec(
+			`UPDATE more_products SET content=?, content_override=1, updated_at=? WHERE cid=?`,
+			content, now, cid)
+		if err != nil {
+			return err
+		}
+	}
 	productcache.Invalidate()
 	return nil
 }

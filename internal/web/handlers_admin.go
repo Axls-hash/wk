@@ -974,6 +974,7 @@ func HandleAdminFrontCategoryDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleAdminFrontCategoryItems GET /api/admin/front-categories/{id}/items
+// 返回 cids（勾选回填）+ items（详情：售价/状态/介绍，供分类内上下架与改介绍）。
 func HandleAdminFrontCategoryItems(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
@@ -987,7 +988,12 @@ func HandleAdminFrontCategoryItems(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]interface{}{"cids": cids})
+	items, err := frontcat.ItemsDetail(id)
+	if err != nil {
+		errJSON(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]interface{}{"cids": cids, "items": items})
 }
 
 // HandleAdminFrontCategoryAddItems POST /api/admin/front-categories/{id}/items {"cids":[1,2]}
@@ -1112,6 +1118,36 @@ func HandleAdminSetMoreProductStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	audit(action, fmt.Sprintf(`{"cid":%d,"status":%d}`, cid, st))
 	writeJSON(w, 200, map[string]interface{}{"cid": cid, "status": st})
+}
+
+// HandleAdminSetMoreProductContent POST /api/admin/more-products/{cid}/content {"content":"..."}
+// 空 content 表示取消自定义介绍（下次同步恢复上游文案）。
+func HandleAdminSetMoreProductContent(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	cid, ok := pathInt64(w, r, "cid")
+	if !ok {
+		return
+	}
+	var body struct {
+		Content *string `json:"content"`
+	}
+	if !readJSON(w, r, &body) || body.Content == nil {
+		err422(w)
+		return
+	}
+	if err := appsync.SetProductContent(cid, *body.Content); err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	audit("more.content.set", fmt.Sprintf(`{"cid":%d,"n":%d}`, cid, len([]rune(strings.TrimSpace(*body.Content)))))
+	var content string
+	var over int
+	_ = store.DB.QueryRow(`SELECT content, COALESCE(content_override,0) FROM more_products WHERE cid=?`, cid).Scan(&content, &over)
+	writeJSON(w, 200, map[string]interface{}{
+		"cid": cid, "content": content, "content_override": over == 1,
+	})
 }
 
 // HandleAdminSetMoreProductPrice POST /api/admin/more-products/{cid}/price {"price_yuan": 12.5}

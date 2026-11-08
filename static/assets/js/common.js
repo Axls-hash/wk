@@ -213,6 +213,7 @@ const adminApi = {
   moreProducts: (params) => request('GET', `/admin/more-products${qs(params)}`), // 综合网课同步商品（管理改价）
   setMorePrice: (cid, priceYuan) => request('POST', `/admin/more-products/${cid}/price`, { price_yuan: priceYuan }),
   setMoreStatus: (cid, status) => request('POST', `/admin/more-products/${cid}/status`, { status }),
+  setMoreContent: (cid, content) => request('POST', `/admin/more-products/${cid}/content`, { content }),
   moreFenlei: () => request('GET', '/admin/more-fenlei'),
   hideMoreFenlei: (fenlei) => request('POST', `/admin/more-fenlei/${encodeURIComponent(fenlei)}/hide`),
   showMoreFenlei: (fenlei) => request('POST', `/admin/more-fenlei/${encodeURIComponent(fenlei)}/show`),

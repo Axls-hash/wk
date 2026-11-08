@@ -257,3 +257,48 @@ func ItemCIDs(categoryID int64) ([]int64, error) {
 	}
 	return out, nil
 }
+
+// ItemDetail 分类下已挂载商品详情（含下架的，便于后台管理）。
+type ItemDetail struct {
+	CID            int64   `json:"cid"`
+	Name           string  `json:"name"`
+	Fenlei         string  `json:"fenlei"`
+	PriceYuan      float64 `json:"price_yuan"`
+	BaseYuan       float64 `json:"base_yuan"`
+	PriceOverride  bool    `json:"price_override"`
+	Status         int     `json:"status"`
+	Content        string  `json:"content"`
+	ContentOverride bool   `json:"content_override"`
+}
+
+// ItemsDetail 列出分类挂载商品的完整信息。
+func ItemsDetail(categoryID int64) ([]ItemDetail, error) {
+	if categoryID <= 0 {
+		return nil, fmt.Errorf("分类无效")
+	}
+	rows, err := store.DB.Query(`
+		SELECT p.cid, p.name, p.fenlei, p.price_yuan, p.base_yuan,
+		       COALESCE(p.price_override,0), COALESCE(p.status,0),
+		       COALESCE(p.content,''), COALESCE(p.content_override,0)
+		FROM front_category_items fi
+		INNER JOIN more_products p ON p.cid=fi.cid
+		WHERE fi.category_id=?
+		ORDER BY p.status DESC, p.name ASC`, categoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ItemDetail, 0)
+	for rows.Next() {
+		var it ItemDetail
+		var over, st, cOver int
+		if rows.Scan(&it.CID, &it.Name, &it.Fenlei, &it.PriceYuan, &it.BaseYuan, &over, &st, &it.Content, &cOver) != nil {
+			continue
+		}
+		it.PriceOverride = over == 1
+		it.Status = st
+		it.ContentOverride = cOver == 1
+		out = append(out, it)
+	}
+	return out, nil
+}

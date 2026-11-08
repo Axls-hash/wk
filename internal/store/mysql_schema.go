@@ -47,7 +47,7 @@ func migrateMySQL() error {
 		`CREATE TABLE IF NOT EXISTS platform_prices (platform VARCHAR(32) PRIMARY KEY, price_fen BIGINT NOT NULL, updated_at DOUBLE NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS admin_audit_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY, action VARCHAR(64) NOT NULL, detail LONGTEXT NOT NULL, created_at DOUBLE NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS announcements (id BIGINT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(100) NOT NULL, content LONGTEXT NOT NULL, level VARCHAR(16) NOT NULL DEFAULT 'info', is_pinned TINYINT NOT NULL DEFAULT 0, is_active TINYINT NOT NULL DEFAULT 1, created_at DOUBLE NOT NULL, updated_at DOUBLE NOT NULL, created_by VARCHAR(64) NOT NULL DEFAULT '') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-		`CREATE TABLE IF NOT EXISTS more_products (cid BIGINT PRIMARY KEY, fenlei INT NOT NULL DEFAULT 0, name VARCHAR(255) NOT NULL, price_yuan DECIMAL(18,2) NOT NULL DEFAULT 0, base_yuan DECIMAL(18,2) NOT NULL DEFAULT 0, price_override TINYINT NOT NULL DEFAULT 0, content LONGTEXT NOT NULL, status TINYINT NOT NULL DEFAULT 0, updated_at DOUBLE NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		`CREATE TABLE IF NOT EXISTS more_products (cid BIGINT PRIMARY KEY, fenlei INT NOT NULL DEFAULT 0, name VARCHAR(255) NOT NULL, price_yuan DECIMAL(18,2) NOT NULL DEFAULT 0, base_yuan DECIMAL(18,2) NOT NULL DEFAULT 0, price_override TINYINT NOT NULL DEFAULT 0, content LONGTEXT NOT NULL, content_override TINYINT NOT NULL DEFAULT 0, status TINYINT NOT NULL DEFAULT 0, updated_at DOUBLE NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS front_categories (id BIGINT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100) NOT NULL, sort_order INT NOT NULL DEFAULT 0, price_mult DECIMAL(10,4) NOT NULL DEFAULT 1, created_at DOUBLE NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS front_category_items (category_id BIGINT NOT NULL, cid BIGINT NOT NULL, PRIMARY KEY (category_id, cid), KEY idx_front_cat_items_cid(cid)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS sxdk_orders (order_id VARCHAR(32) PRIMARY KEY, user_id BIGINT NOT NULL, platform VARCHAR(16) NOT NULL, tianhe_id BIGINT NOT NULL DEFAULT 0, phone VARCHAR(64) NOT NULL, password VARCHAR(128) NOT NULL, name VARCHAR(64) NOT NULL DEFAULT '', address VARCHAR(255) NOT NULL DEFAULT '', project_name VARCHAR(64) NOT NULL DEFAULT '', school_text VARCHAR(128) NOT NULL DEFAULT '', check_week VARCHAR(64) NOT NULL, end_time VARCHAR(32) NOT NULL, up_check_time VARCHAR(64) NOT NULL DEFAULT '', down_check_time VARCHAR(64) NOT NULL DEFAULT '', day_paper INT NOT NULL DEFAULT 2, week_paper INT NOT NULL DEFAULT 2, month_paper INT NOT NULL DEFAULT 2, run_type INT NOT NULL DEFAULT 1, days INT NOT NULL DEFAULT 0, sell_yuan DECIMAL(18,2) NOT NULL DEFAULT 1, amount_fen BIGINT NOT NULL DEFAULT 0, status VARCHAR(16) NOT NULL DEFAULT 'pending', code INT NOT NULL DEFAULT -1, remark VARCHAR(500) NOT NULL DEFAULT '', created_at DOUBLE NOT NULL, KEY idx_sxdk_orders_user(user_id, created_at), KEY idx_sxdk_orders_tianhe(tianhe_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -72,8 +72,31 @@ func migrateMySQL() error {
 			return fmt.Errorf("mysql schema migration failed: %w", err)
 		}
 	}
+	if err := ensureMySQLColumn("more_products", "content_override",
+		`ALTER TABLE more_products ADD COLUMN content_override TINYINT NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
 	if err := migrateMySQLTaskMutex(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ensureMySQLColumn(table, column, alterSQL string) error {
+	var n int
+	err := DB.QueryRow(
+		`SELECT count(*) FROM information_schema.columns
+		 WHERE table_schema=DATABASE() AND table_name=? AND column_name=?`,
+		table, column,
+	).Scan(&n)
+	if err != nil {
+		return fmt.Errorf("mysql check column %s.%s failed: %w", table, column, err)
+	}
+	if n > 0 {
+		return nil
+	}
+	if _, err := DB.Exec(alterSQL); err != nil {
+		return fmt.Errorf("mysql add column %s.%s failed: %w", table, column, err)
 	}
 	return nil
 }

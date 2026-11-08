@@ -134,7 +134,6 @@ function renderTab() {
   panel.replaceChildren()
   if (t === 'dashboard') renderDashboard(panel)
   else if (t === 'announcements') renderAnnouncements(panel)
-  else if (t === 'prices') renderPrices(panel)
   else if (t === 'more-prices') renderMorePrices(panel)
   else if (t === 'syy-prices') renderSyyPrices(panel)
   else if (t === 'bing-prices') renderBingPrices(panel)
@@ -1479,9 +1478,6 @@ function renderSyscfg(panel) {
           field('对接地址', skyURL),
           field('对接 UID', skyUID),
           field('对接 KEY', skyKey),
-        ]),
-        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
-          field('主流平台默认单价（元/门）', coursePrice, '智慧树/学习通等「平台价格」页未单独改价时用这个'),
         ]),
       ]),
       h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [

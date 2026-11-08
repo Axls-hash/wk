@@ -21,6 +21,11 @@ const PLATFORM_NOTES = {
   奶昔: '学习通/智慧树/U校园/Utalk/随行课堂/学习公社/中国大学mooc等，按所选商品下单',
   曙光: '学习通/U校园/Welearn/池馆/青书学堂/智慧树/中国大学MOOC等，按所选商品下单',
   小青: '青书学堂/学起plus/随行课堂Welearn/智慧树AI课/雨课堂/优学院/U校园等大量成教/继教平台的代刷服务，按所选商品下单',
+  五福: '学习通/学起plus/随行课堂welearn/成教继教平台等，按所选商品下单',
+  茉莉: '学起Plus/青书学堂/U校园/清华社等平台的代刷服务，按所选商品下单',
+  tenu: '麦能学堂/广财慕课/云南大学继教/学堂在线等成教继教平台，按所选商品下单',
+  国开: '国家开放大学（国开）/广东开放大学等，多货源可选，按所选商品下单',
+  课代表: '学习通/智慧树/智慧职教等平台的代刷服务，按所选商品下单',
 }
 
 const PLATFORM_ICONS = {
@@ -40,9 +45,14 @@ const PLATFORM_ICONS = {
   奶昔: { bg: '#fff1f2', fg: '#e11d48', svg: '<path d="M6 8h12l-2 13a2 2 0 0 1-2 1.7H10a2 2 0 0 1-2-1.7L6 8z"/><path d="M6 8h12"/><path d="M8 5h8"/>' },
   曙光: { bg: '#f7fee7', fg: '#65a30d', svg: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.9 4.9l1.4 1.4"/><path d="M17.7 17.7l1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.9 19.1l1.4-1.4"/><path d="M17.7 6.3l1.4-1.4"/>' },
   小青: { bg: '#ecfeff', fg: '#155e75', svg: '<path d="M5 3h14a1 1 0 0 1 1 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1z"/><path d="M9 8h6"/><path d="M9 12h6"/>' },
+  五福: { bg: '#fef3c7', fg: '#b45309', svg: '<path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/>' },
+  茉莉: { bg: '#fce7f3', fg: '#be185d', svg: '<circle cx="12" cy="8" r="3"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/><circle cx="12" cy="16" r="3"/><circle cx="12" cy="12" r="1.5"/>' },
+  tenu: { bg: '#e0e7ff', fg: '#4338ca', svg: '<path d="M22 9L12 4 2 9l10 5 10-5z"/><path d="M6 11.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5"/>' },
+  国开: { bg: '#dcfce7', fg: '#15803d', svg: '<path d="M3 21h18"/><path d="M5 21V10"/><path d="M19 21V10"/><path d="M9 21V10"/><path d="M15 21V10"/><path d="M2 10l10-6 10 6z"/>' },
+  课代表: { bg: '#ede9fe', fg: '#6d28d9', svg: '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V2h6v2"/><path d="M9 13l2 2 4-4"/>' },
 }
 const FALLBACK_ICON = { bg: '#f4f4f5', fg: '#52525b', svg: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>' }
-const PLATFORM_DISPLAY_NAMES = { 智慧树: '智慧树/知道', MOOC: '中国大学mooc', pup: 'pup / 波妞' }
+const PLATFORM_DISPLAY_NAMES = { 智慧树: '智慧树/知道', MOOC: '中国大学mooc', pup: 'pup / 波妞', 国开: '国开 / 开放大学' }
 
 /* ==================== 全局状态 ==================== */
 
@@ -50,6 +60,8 @@ let platforms = []
 let morePlatforms = [] // 综合网课平台/商品：[{name, price_fen?, note?}]（/more-platforms）
 let priceFen = 300
 let platformPrices = {}
+let bingEnabled = true // 病例入口是否开放（/api/config 下发，管理端可随时开关）
+let qdEnabled = true // 学习通自动签到入口是否开放（/api/config 下发，管理端可随时开关）
 let user = undefined // undefined=加载中 null=未登录 object=已登录
 const PAGE = document.body.dataset.page
 
@@ -125,6 +137,8 @@ function setUserState(u) {
 // agent/pay 页也不拉公告接口；退出登录时清空横幅并停止轮询。
 let annInited = false
 let annTimer = null
+let annRefresh = null // 最新一次 init 的刷新函数（visibilitychange 恢复时用）
+let annVisBound = false
 function ensureAnnouncements() {
   if (PAGE !== 'index') return
   if (!user) {
@@ -202,6 +216,20 @@ function initAnnouncements() {
 
   load()
   annTimer = setInterval(load, 30000)
+  annRefresh = load
+  // 标签页切后台暂停轮询，回前台立即刷新一次（全局只绑一次监听）
+  if (!annVisBound) {
+    annVisBound = true
+    document.addEventListener('visibilitychange', () => {
+      if (!annInited) return
+      if (document.hidden) {
+        if (annTimer) { clearInterval(annTimer); annTimer = null }
+      } else if (!annTimer && annRefresh) {
+        annRefresh()
+        annTimer = setInterval(annRefresh, 30000)
+      }
+    })
+  }
 }
 
 /* ==================== 登录/注册表单 ==================== */
@@ -272,7 +300,7 @@ function renderHomeView() {
   showHomeGrid()
 }
 
-// 服务大厅 4 个模块的卡片图标：与平台图标同风格的线性 SVG（白描边），
+// 服务大厅 5 个模块的卡片图标：与平台图标同风格的线性 SVG（白描边），
 // 每个模块配各自的柔和渐变底色，替代原来参差不齐的 emoji，视觉更精致统一。
 const HOME_SECTION_ICONS = {
   // 主流网课：学士帽
@@ -314,17 +342,39 @@ const HOME_SECTION_ICONS = {
       h('path', { d: 'M18 5h3v2a3 3 0 0 1-3 3' }),
     ],
   },
+  // 病例：医疗箱（带十字）
+  case: {
+    bg: 'linear-gradient(135deg,#f43f5e,#fb7185)',
+    paths: [
+      h('rect', { x: '3', y: '6', width: '18', height: '14', rx: '3' }),
+      h('path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }),
+      h('path', { d: 'M12 10v6' }),
+      h('path', { d: 'M9 13h6' }),
+    ],
+  },
+  // 学习通自动签到：时钟+对勾
+  qd: {
+    bg: 'linear-gradient(135deg,#0ea5e9,#22d3ee)',
+    paths: [
+      h('circle', { cx: '12', cy: '12', r: '9' }),
+      h('path', { d: 'M12 7v5l3.5 2' }),
+      h('path', { d: 'M8.5 13.5l2 2 4.5-5' }),
+    ],
+  },
 }
 
 function showHomeGrid() {
   const el = $('#home-view')
   homeGridActive = true
   const sections = [
-    ['platforms', '主流网课', `主流网课学习进度查询，覆盖 ${platforms.length} 个平台：学习通、智慧树、welearn 等`],
-    ['cold', '综合网课', `小众平台课程进度，${morePlatforms.length ? '已支持 ' + morePlatforms.map((p) => p.name).join('、') : '待开发'}`],
-    ['intern', '实习打卡', '实习打卡与签到，待开发'],
-    ['sport', '我爱运动', '运动打卡与阳光体育，待开发'],
+    ['cold', '综合网课', morePlatforms.length ? `已上架 ${morePlatforms.map((p) => p.name).join('、')}` : '选平台项目，填账号查课下单'],
+    ['intern', '实习打卡', '选平台填打卡安排，按天扣积分下单'],
+    ['sport', '我爱运动', '运动项目代刷，按数量扣积分，拿链接去平台完成'],
   ]
+  // 病例入口由管理端开关控制；关闭后不再展示（个人中心仍可查看历史订单）
+  if (bingEnabled) sections.push(['case', '病例', '选择病例模板，在线填写并生成图片，按模板扣积分'])
+  // 学习通自动签到入口由管理端开关控制
+  if (qdEnabled) sections.push(['qd', '学习通自动签到', '登录学习通账号，全天自动监控签到，周卡/月卡按积分开通'])
   const grid = h('div', { class: 'home-grid' })
   for (const [key, name, desc] of sections) {
     const ic = HOME_SECTION_ICONS[key]
@@ -563,8 +613,8 @@ function showModuleSelect(m) {
 
 /* 商品主平台分组：`龙龙-学习通全包（复习模式）` → `学习通` */
 function productGroupKey(name) {
-  let s = String(name || '').replace(/^(yl|一流|少年|龙龙|灵珠|毛豆|奶昔|曙光|小青|星星)[-－]?\s*/i, '')
-  const i = s.search(/[（(\s【0-9]/)
+  let s = String(name || '').replace(/^(yl|一流|少年|龙龙|灵珠|毛豆|奶昔|曙光|小青|星星|五福|茉莉|tenu|tneu|霍希|kk|龙猫|课代表|天河独家优质)[-－]?\s*/i, '')
+  const i = s.search(/[（(\s【0-9\-－]/)
   let head = i >= 0 ? s.slice(0, i) : s
   head = head.replace(/(全包|仅作业|仅视频|仅试卷|继续教育|复习模式)$/, '')
   return head || s
@@ -578,7 +628,7 @@ function enterMoreProduct(m, it) {
   renderPurchaseFlow()
 }
 
-const PLACEHOLDER_TITLES = { cold: '综合网课', intern: '实习打卡', sport: '我爱运动' }
+const PLACEHOLDER_TITLES = { cold: '综合网课', intern: '实习打卡', sport: '我爱运动', case: '病例' }
 
 /* ==================== 实习打卡（sxdk，独立模块） ==================== */
 
@@ -746,20 +796,1282 @@ function renderSxdkFlow(el) {
   })()
 }
 
+/* ==================== 我爱运动（syy，套娃下游） ==================== */
+
+let syyProjects = []
+
+// 我爱运动：横向项目胶囊 + Hero 详情 + 一体化下单/退还面板（手机原生手感）
+function renderSportFlow(el) {
+  homeGridActive = false
+  el.replaceChildren()
+  injectSyyStyle()
+  const view = h('div', { class: 'home-view' })
+  el.appendChild(view)
+
+  let selIdx = 0
+  let wdBalance = null // 所选项目的上游剩余单位（查余额后）
+
+  const SYY_PALETTES = [
+    ['#eef2ff', '#4f46e5'], ['#ecfeff', '#0891b2'], ['#fef2f2', '#dc2626'], ['#f0fdf4', '#16a34a'],
+    ['#fff7ed', '#ea580c'], ['#faf5ff', '#9333ea'], ['#fffbeb', '#d97706'], ['#eff6ff', '#2563eb'],
+  ]
+  const resultBox = h('div')
+
+  // ---- 项目胶囊（横向滑动，选中自动滚到中间）----
+  const tabsScroll = h('div', { class: 'syy-tabs' })
+  function drawTabs() {
+    tabsScroll.replaceChildren()
+    syyProjects.forEach((p, i) => {
+      const [bg, fg] = SYY_PALETTES[i % SYY_PALETTES.length]
+      tabsScroll.appendChild(h('button', {
+        type: 'button',
+        class: 'syy-tab' + (i === selIdx ? ' active' : ''),
+        title: p.description || '',
+        onclick: () => {
+          if (selIdx === i) return
+          selIdx = i
+          wdBalance = null
+          drawTabs()
+          updHero()
+          updTotal()
+          renderAcct()
+          updWd()
+        },
+      }, [
+        h('span', { class: 'syy-tab-ico', style: `background:${bg};color:${fg}` }, (p.name || '?')[0]),
+        h('span', { class: 'syy-tab-body' }, [
+          h('span', { class: 'syy-tab-name' }, p.name),
+          h('span', { class: 'syy-tab-price' }, `${fmtMoney(p.unit_fen)}/单位`),
+        ]),
+      ]))
+    })
+    const act = tabsScroll.querySelector('.syy-tab.active')
+    if (act) act.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }
+
+  // ---- Hero：选中项目大卡 ----
+  const heroIco = h('span', { class: 'syy-hero-ico' })
+  const heroName = h('div', { class: 'syy-hero-name' })
+  const heroPrice = h('span', { class: 'platform-price' })
+  const heroDesc = h('div', { class: 'syy-hero-desc' })
+  function updHero() {
+    const p = syyProjects[selIdx]
+    if (!p) return
+    const [bg, fg] = SYY_PALETTES[selIdx % SYY_PALETTES.length]
+    heroIco.style.background = bg
+    heroIco.style.color = fg
+    heroIco.textContent = (p.name || '?')[0]
+    heroName.textContent = p.name
+    heroPrice.textContent = `${fmtMoney(p.unit_fen)}/单位`
+    heroDesc.textContent = p.description || '按数量计费，下单后拿专属链接去平台完成任务'
+  }
+
+  // ---- 我的运动账户：免费开户（0积分拿链接）→ 进站后按需充值 ----
+  let acctCache = {} // project_id → {balance,link} | {none:true}
+  const acctNum = h('span', { class: 'num' }, '--')
+  const acctMeta = h('span', { class: 'meta', style: 'flex:1' }, '查询中…')
+  const acctBtn = h('button', { class: 'btn btn-sm btn-primary', type: 'button', hidden: true }, '免费开通账户')
+  const acctGo = h('a', { class: 'btn btn-sm btn-primary', target: '_blank', rel: 'noopener', hidden: true }, '进入平台 →')
+  function renderAcct() {
+    const p = syyProjects[selIdx]
+    if (!p) return
+    const st = acctCache[p.project_id]
+    if (st === undefined) {
+      acctNum.textContent = '--'
+      acctMeta.textContent = '查询中…'
+      acctBtn.hidden = true
+      acctGo.hidden = true
+      refreshAcct(p.project_id)
+      return
+    }
+    if (st.link) {
+      acctNum.textContent = `剩余 ${fmtNum(st.balance ?? 0)} 单位`
+      acctMeta.textContent = '账户已开通，链接长期有效'
+      acctGo.href = st.link
+      acctGo.hidden = false
+      acctBtn.hidden = true
+    } else {
+      acctNum.textContent = '未开通'
+      acctMeta.textContent = '开通免费，不扣积分'
+      acctGo.hidden = true
+      acctBtn.hidden = false
+    }
+    updSubmitText()
+  }
+  async function refreshAcct(pid) {
+    try {
+      const b = await api.syyBalance(pid)
+      acctCache[pid] = { balance: b.balance, link: b.customer_link }
+    } catch (e) {
+      if (e.status === 404) acctCache[pid] = { none: true }
+      else {
+        // 查询失败（上游/网络）不缓存，明确反馈避免卡在“查询中…”
+        const cur = syyProjects[selIdx]
+        if (cur && cur.project_id === pid) acctMeta.textContent = '查询失败：' + e.message
+        return
+      }
+    }
+    const cur = syyProjects[selIdx]
+    if (cur && cur.project_id === pid) renderAcct()
+  }
+  acctBtn.addEventListener('click', async () => {
+    const p = syyProjects[selIdx]
+    if (!p) return
+    acctBtn.disabled = true
+    try {
+      const res = await api.syyOpen(p.project_id)
+      acctCache[p.project_id] = { balance: res.balance ?? 0, link: res.customer_link }
+      showToast('开通成功！点击「进入平台」开始', 'success')
+      if (res.customer_link) {
+        // await 之后用户激活可能已过期，window.open 会被浏览器静默拦截，返回 null
+        const win = window.open(res.customer_link, '_blank', 'noopener')
+        if (!win) showToast('浏览器拦截了自动弹窗，请点下方「进入平台」按钮', 'warning')
+      }
+      renderAcct()
+    } catch (e) {
+      showToast(e.message, 'error')
+    } finally {
+      acctBtn.disabled = false
+    }
+  })
+  function updSubmitText() {
+    const p = syyProjects[selIdx]
+    const st = p ? acctCache[p.project_id] : undefined
+    submitBtn.textContent = st && st.link ? '积分充值' : '积分下单并开通'
+  }
+  const acctBox = h('div', { class: 'syy-acct' }, [
+    h('span', { class: 'num' }, [acctNum]),
+    h('span', { class: 'meta', style: 'flex:1' }, [acctMeta]),
+    acctBtn,
+    acctGo,
+  ])
+
+  // ---- 数量与支付 ----
+  const kmIn = h('input', { class: 'input', type: 'number', min: '1', step: '1', placeholder: '输入数量（公里 / 次）', required: true })
+  const totalAmt = h('span', { class: 'amt' }, '--')
+  const totalMeta = h('span', { class: 'meta' })
+  function updTotal() {
+    const p = syyProjects[selIdx]
+    const km = parseFloat(kmIn.value)
+    if (!p || !Number.isFinite(km) || km <= 0) {
+      totalAmt.textContent = '--'
+      totalMeta.textContent = `单价 ${fmtMoney(p ? p.unit_fen : 0)} · 余额 ${fmtNum(user?.points)} 积分`
+      return
+    }
+    const total = (km * p.unit_fen) / 100
+    totalAmt.textContent = total.toFixed(2) + ' 积分'
+    const lack = (user?.points ?? 0) < total
+    totalAmt.classList.toggle('lack', lack)
+    totalMeta.textContent = `${km} 单位 × ${fmtMoney(p.unit_fen)} · 余额 ${fmtNum(user?.points)}${lack ? ' · 余额不足' : ''}`
+  }
+  kmIn.addEventListener('input', updTotal)
+  const chip = (v, target) => h('button', { class: 'syy-chip', type: 'button', onclick: () => { target.value = v; target.dispatchEvent(new Event('input')) } }, v)
+  const chipsRow = h('div', { class: 'syy-chips' }, [1, 5, 10, 20, 50, 100].map((v) => chip(v, kmIn)))
+
+  const submitBtn = h('button', { class: 'btn btn-primary syy-btn', type: 'submit' }, '积分下单并开通')
+  const orderForm = h('form', { onsubmit: async (e) => {
+    e.preventDefault()
+    const p = syyProjects[selIdx]
+    const km = parseFloat(kmIn.value)
+    if (!p) { showToast('请先选择项目', 'warning'); return }
+    if (!Number.isFinite(km) || km <= 0) { showToast('请填写有效数量', 'warning'); return }
+    const enough = (user?.points ?? 0) >= (km * p.unit_fen) / 100
+    if (!enough) { showToast('积分余额不足，请先充值', 'warning'); return }
+    submitBtn.disabled = true
+    submitBtn.innerHTML = '<span class="spinner"></span> 下单中…'
+    resultBox.replaceChildren()
+    try {
+      const res = await api.syyCreateOrder({ project_id: p.project_id, km })
+      if (res.status === 'done' && res.customer_link) {
+        resultBox.appendChild(h('div', { class: 'order-ok' }, [
+          h('div', null, `✓ 下单成功：已开通 ${res.km} 个单位，扣 ${fmtNum(res.amount_fen / 100)} 积分`),
+          h('div', { class: 'order-ok-sub' }, '点击下方按钮进入运动平台完成任务；链接长期有效，同一项目可随时追加数量或退还。'),
+        ]))
+        resultBox.appendChild(h('div', { class: 'syy-chips', style: 'margin-top:12px' }, [
+          h('a', { class: 'btn btn-primary', href: res.customer_link, target: '_blank', rel: 'noopener' }, `进入${syyUpstreamName} →`),
+          h('button', { class: 'btn', type: 'button', onclick: () => {
+            navigator.clipboard?.writeText(res.customer_link)
+            showToast('链接已复制', 'success')
+          } }, '复制链接'),
+        ]))
+        resultBox.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      } else {
+        resultBox.appendChild(h('div', { class: 'task-status' }, [
+          h('span', { class: 'spinner' }),
+          h('div', null, ['订单已提交，上游处理中，结果请稍后到', h('a', { href: '/agent' }, ' 个人中心-我爱运动 '), '查看']),
+        ]))
+      }
+      kmIn.value = ''
+      const me = await api.agentMe().catch(() => null)
+      if (me) setUserState(me)
+      updTotal()
+      refreshAcct(p.project_id)
+      showToast('下单成功', 'success')
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      submitBtn.disabled = false
+      updSubmitText()
+    }
+  } }, [
+    h('div', { class: 'field' }, [h('label', null, '充值数量（公里 / 次）'), kmIn, chipsRow]),
+    h('div', { class: 'syy-summary' }, [
+      h('span', { class: 'meta' }, [totalMeta]),
+      h('span', { class: 'amt' }, [totalAmt]),
+    ]),
+    submitBtn,
+  ])
+
+  // ---- 退还公里数 ----
+  const wdKmIn = h('input', { class: 'input', type: 'number', min: '0.01', step: '0.01', placeholder: '要退还的数量' })
+  const wdBalNum = h('span', { class: 'num' }, '--')
+  const wdBalMeta = h('span', { class: 'meta' }, '先查余额，再填写要退还的数量')
+  function updWd() {
+    wdBalance = null
+    wdBalNum.textContent = '--'
+    wdBalMeta.textContent = '先查余额，再填写要退还的数量'
+    wdKmIn.value = ''
+  }
+  const checkWd = h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
+    const p = syyProjects[selIdx]
+    if (!p) { showToast('请先选择项目', 'warning'); return }
+    wdBalMeta.textContent = '查询中…'
+    try {
+      const b = await api.syyBalance(p.project_id)
+      wdBalance = b.balance
+      wdBalNum.textContent = `${b.balance} 单位`
+      wdBalMeta.textContent = `≈ 可退 ${fmtNum((b.balance * p.unit_fen) / 100)} 积分`
+    } catch (e) {
+      wdBalance = null
+      wdBalNum.textContent = '--'
+      wdBalMeta.textContent = e.status === 404 ? '该项目下暂无运动客户，先开通账户' : ('查询失败：' + e.message)
+    }
+  } }, '查余额')
+  const wdBtn = h('button', { class: 'btn btn-outline syy-btn', type: 'button' }, '退还到积分')
+  wdBtn.addEventListener('click', async () => {
+    const p = syyProjects[selIdx]
+    const km = parseFloat(wdKmIn.value)
+    if (!p) { showToast('请先选择项目', 'warning'); return }
+    if (!Number.isFinite(km) || km <= 0) { showToast('请填写要退还的数量', 'warning'); return }
+    if (!confirm(`确定退还 ${km} 单位？将按当前单价退回 ${fmtNum((km * p.unit_fen) / 100)} 积分。`)) return
+    wdBtn.disabled = true
+    wdBtn.textContent = '退还中…'
+    try {
+      const res = await api.syyWithdraw({ project_id: p.project_id, km })
+      showToast(`已退还 ${res.km} 单位，返 ${fmtNum(res.refund_fen / 100)} 积分`, 'success')
+      updWd()
+      const me = await api.agentMe().catch(() => null)
+      if (me) setUserState(me)
+    } catch (e) {
+      showToast(e.message, 'error')
+    } finally {
+      wdBtn.disabled = false
+      wdBtn.textContent = '退还到积分'
+    }
+  })
+  const wdChips = h('div', { class: 'syy-chips' }, [chip(1, wdKmIn), chip(5, wdKmIn), h('button', { class: 'syy-chip', type: 'button', onclick: () => {
+    if (wdBalance == null) { showToast('先点「查余额」', 'warning'); return }
+    wdKmIn.value = wdBalance
+  } }, '全部退')])
+
+  // ---- 组装：单列 720px 居中 ----
+  view.appendChild(h('div', { class: 'subnav' }, [
+    h('a', { class: 'back-link', href: '#', onclick: (e) => { e.preventDefault(); showHomeGrid() } }, '← 返回服务首页'),
+    h('span', { class: 'subnav-title' }, '我爱运动'),
+  ]))
+  view.appendChild(h('div', { class: 'page-head' }, [h('h1', null, '我爱运动'), h('p', null, '选项目 → 免费开通拿专属链接 → 按需充值，未用完随时退还')]))
+  view.appendChild(resultBox)
+  view.appendChild(h('div', { class: 'card syy-main' }, [
+    tabsScroll,
+    h('div', { class: 'syy-hero' }, [
+      heroIco,
+      h('div', { class: 'syy-hero-main' }, [
+        h('div', { class: 'syy-hero-row' }, [heroName, heroPrice]),
+        heroDesc,
+      ]),
+    ]),
+    acctBox,
+    orderForm,
+    h('div', { class: 'syy-divider' }),
+    h('div', { class: 'syy-subtitle' }, '退还公里数'),
+    h('div', { class: 'syy-acct' }, [
+      h('span', { class: 'num' }, [wdBalNum]),
+      h('span', { class: 'meta', style: 'flex:1' }, [wdBalMeta]),
+      checkWd,
+    ]),
+    h('div', { class: 'field', style: 'margin-top:12px' }, [h('label', null, '退还数量'), wdKmIn]),
+    wdChips,
+    wdBtn,
+  ]))
+
+  // 异步加载项目
+  ;(async () => {
+    try {
+      const d = await api.syyProjects()
+      syyProjects = Array.isArray(d.items) ? d.items : []
+      syyUpstreamName = d.upstream_name || '运动平台'
+    } catch { syyProjects = [] }
+    if (syyProjects.length === 0) {
+      view.appendChild(h('div', { class: 'empty' }, '运动业务暂未开放，请稍后再试'))
+      return
+    }
+    drawTabs()
+    updHero()
+    updTotal()
+    renderAcct()
+  })()
+}
+
+// 我爱运动页专用样式（注入一次）
+let _syyStyleInjected = false
+function injectSyyStyle() {
+  if (_syyStyleInjected) return
+  _syyStyleInjected = true
+  const st = h('style')
+  st.textContent = `
+    .syy-main{max-width:720px;margin:0 auto;padding:18px 18px 22px}
+    .syy-tabs{display:flex;gap:9px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+    .syy-tabs::-webkit-scrollbar{display:none}
+    .syy-tab{flex-shrink:0;display:flex;align-items:center;gap:9px;padding:7px 14px 7px 7px;border:1.5px solid var(--border);border-radius:999px;background:var(--surface);cursor:pointer;transition:all .16s;font-family:inherit;scroll-snap-align:center}
+    .syy-tab:hover{border-color:var(--border-strong)}
+    .syy-tab.active{border-color:var(--text);background:#f8fafc;box-shadow:0 0 0 1.5px var(--text),var(--shadow-md)}
+    .syy-tab-ico{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0}
+    .syy-tab-body{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+    .syy-tab-name{font-size:12.5px;font-weight:700;color:var(--text);max-width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .syy-tab-price{font-size:11px;color:#059669;font-weight:700;font-variant-numeric:tabular-nums}
+    .syy-hero{display:flex;gap:14px;align-items:flex-start;background:linear-gradient(135deg,#f8fafc,#eef2ff);border:1px solid var(--border);border-radius:var(--radius);padding:15px 16px;margin-bottom:12px}
+    .syy-hero-ico{width:52px;height:52px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:800;flex-shrink:0;box-shadow:var(--shadow-soft)}
+    .syy-hero-main{flex:1;min-width:0}
+    .syy-hero-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .syy-hero-name{font-size:17px;font-weight:800;letter-spacing:-.01em}
+    .syy-hero-desc{font-size:12.5px;color:var(--text-muted);margin-top:5px;line-height:1.6}
+    .syy-acct{display:flex;align-items:center;gap:12px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;margin-top:12px;flex-wrap:wrap}
+    .syy-acct .num{font-size:15.5px;font-weight:850;font-variant-numeric:tabular-nums;color:var(--text)}
+    .syy-acct .meta{font-size:12.5px;color:var(--text-muted)}
+    .syy-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .syy-chip{padding:6px 13px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12.5px;font-weight:600;color:var(--text-soft);cursor:pointer;transition:all .15s;font-family:inherit}
+    .syy-chip:hover{border-color:var(--border-strong)}
+    .syy-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 15px;margin-top:14px;flex-wrap:wrap}
+    .syy-summary .amt{font-size:19px;font-weight:850;color:var(--accent);font-variant-numeric:tabular-nums}
+    .syy-summary .amt.lack{color:var(--danger)}
+    .syy-summary .meta{font-size:12.5px;color:var(--text-muted)}
+    .syy-btn{width:100%;justify-content:center;margin-top:14px}
+    .syy-divider{height:1px;background:var(--border);margin:18px 0 14px}
+    .syy-subtitle{font-size:13.5px;font-weight:750;margin-bottom:10px}
+  `
+  document.head.appendChild(st)
+}
+let syyUpstreamName = '运动平台'
+
+// 个人中心：我的运动购买记录（同项目复用同一链接，可重复充值）
+function renderSyyOrders(panel) {
+  let items = null
+  const body = h('tbody')
+  const cardsBox = h('div', { class: 'ag-cards' })
+  const mobile = isMobileView()
+
+  const load = async () => {
+    try {
+      const d = await api.syyOrders()
+      items = Array.isArray(d.items) ? d.items : []
+      draw()
+    } catch (e) {
+      showToast('加载失败：' + e.message, 'error')
+    }
+  }
+
+  const syyBadge = (s) => s === 'done' ? h('span', { class: 'badge badge-done' }, '已到账')
+    : s === 'error' ? h('span', { class: 'badge badge-banned' }, '下单失败')
+    : h('span', { class: 'badge badge-progress' }, '处理中')
+
+  function draw() {
+    if (!items) return
+    if (!items.length) {
+      const node = h('div', { class: 'empty' }, '还没有运动订单，去首页【我爱运动】下一单吧')
+      if (mobile) cardsBox.replaceChildren(node)
+      else body.replaceChildren(h('tr', null, h('td', { colSpan: 7 }, node)))
+      return
+    }
+    const linkBtn = (o) => o.customer_link
+      ? h('a', { class: 'btn btn-sm', href: o.customer_link, target: '_blank', rel: 'noopener' }, '打开平台')
+      : h('span', { class: 'progress-tip' }, o.remark || '-')
+    const kmText = (o) => o.km < 0 ? `退还 ${fmtNum(-o.km)}` : `${o.km} 单位`
+    const amtText = (o) => o.amount_fen < 0 ? `返 ${fmtNum(-o.amount_fen / 100)} 积分` : `扣 ${fmtNum(o.amount_fen / 100)} 积分`
+    if (mobile) {
+      cardsBox.replaceChildren(...items.map((o) => h('div', { class: 'ag-card' }, [
+        h('div', { class: 'ag-card-top' }, [h('b', null, o.project_name), syyBadge(o.status)]),
+        h('div', { class: 'ag-card-line' }, [
+          h('span', null, `${kmText(o)} · ${amtText(o)}`),
+          h('span', { class: 'ag-card-money' }, fmtTime(o.created_at)),
+        ]),
+        h('div', { class: 'ag-card-line' }, [h('span', null, o.balance > 0 ? `剩余约 ${o.balance} 单位` : ''), linkBtn(o)]),
+      ])))
+    } else {
+      body.replaceChildren(...items.map((o) => h('tr', {}, [
+        h('td', null, fmtTime(o.created_at)),
+        h('td', null, o.project_name),
+        h('td', null, kmText(o)),
+        h('td', null, fmtMoney(o.amount_fen)),
+        h('td', null, syyBadge(o.status)),
+        h('td', null, o.balance > 0 ? String(o.balance) : '-'),
+        h('td', null, linkBtn(o)),
+      ])))
+    }
+  }
+
+  const refreshBtn = h('button', { class: 'btn btn-sm', onclick: load }, '↻ 刷新')
+  const listWrap = mobile
+    ? cardsBox
+    : h('div', { class: 'agent-table-wrap ag-table-card' }, h('table', { class: 'agent-table' }, [
+      h('thead', null, h('tr', null, ['时间', '项目', '数量', '扣分', '状态', '剩余(参考)', '链接'].map((x) => h('th', null, x)))),
+      body,
+    ]))
+  panel.replaceChildren(h('section', null, [
+    panelHead('我爱运动', '运动项目购买记录；同一项目多次充值共用同一专属链接', h('span', null, [refreshBtn])),
+    listWrap,
+  ]))
+  load()
+}
+
+/* ==================== 病例（bingli，独立模块） ==================== */
+
+function bingStatusBadge(o) {
+  if (o.status === 'error') return h('span', { class: 'badge badge-banned' }, '失败已退款')
+  if (o.status === 'processing') return h('span', { class: 'badge badge-progress' }, '处理中')
+  if (o.image_ready) return h('span', { class: 'badge badge-done' }, '已完成')
+  return h('span', { class: 'badge badge-progress' }, '图片生成中')
+}
+
+// 病例字段排序：患者基本信息在前，诊断/建议等长文本在中间，签名/时间在最后。
+// 上游返回的字段是按 fieldKey 字母序的（advice、age、name…），直接展示会很乱。
+const BING_FIELD_ORDER = [
+  ['姓名', 'name'],
+  ['性别', 'gender'],
+  ['年龄', 'age'],
+  ['病历号', 'caseNo', '门诊号', '住院号'],
+  ['科别', 'dept', '科室'],
+  ['医院名称', 'hospital'],
+  ['文书名称', 'docTitle'],
+  ['诊断', 'diagnosis'],
+  ['建议', 'advice', '医嘱'],
+  ['医师签名', 'doctor', '医生'],
+  ['记录时间', 'recordTime', '日期'],
+]
+
+function bingOrderedFields(fields) {
+  const rank = (f) => {
+    const key = String(f.field_key || '').toLowerCase()
+    const label = String(f.label || '')
+    for (let i = 0; i < BING_FIELD_ORDER.length; i++) {
+      for (const alias of BING_FIELD_ORDER[i]) {
+        const a = String(alias).toLowerCase()
+        if (key === a || label === alias) return i
+      }
+    }
+    return BING_FIELD_ORDER.length
+  }
+  return (fields || [])
+    .map((f, i) => ({ f, i, r: rank(f) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.f)
+}
+
+// 首页服务大厅 → 病例：选模板 → 按模板动态字段填写 → 扣积分生成图片
+function renderBingliFlow(el) {
+  homeGridActive = false
+  el.replaceChildren()
+  const view = h('div', { class: 'home-view' })
+  el.appendChild(view)
+
+  let apps = []
+  let selId = ''
+  let detail = null
+  let submitting = false
+
+  const cardsBox = h('div', { class: 'platform-grid' })
+  const statusBox = h('div', { class: 'empty' }, '病例模板加载中…')
+  const formCard = h('div', { class: 'card step-card', style: 'display:none' })
+  const resultBox = h('div')
+
+  view.appendChild(h('div', { class: 'subnav' }, [
+    h('a', { class: 'back-link', href: '#', onclick: (e) => { e.preventDefault(); showHomeGrid() } }, '← 返回服务首页'),
+    h('span', { class: 'subnav-title' }, '病例'),
+  ]))
+  view.appendChild(h('div', { class: 'page-head' }, [
+    h('h1', null, '病例'),
+    h('p', null, '选择模板 → 在线填写 → 提交后生成病例图片，按模板扣积分'),
+  ]))
+  view.appendChild(cardsBox)
+  view.appendChild(statusBox)
+  view.appendChild(formCard)
+  view.appendChild(resultBox)
+
+  function drawCards() {
+    cardsBox.replaceChildren(...apps.map((a) => h('div', {
+      class: 'platform-card' + (a.id === selId ? ' active' : ''),
+      onclick: () => selectApp(a.id),
+    }, [
+      h('span', { class: 'platform-name' }, a.name),
+      h('span', { class: 'platform-price' }, `${fmtNum(a.price_points)} 积分`),
+      h('span', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5' },
+        [a.category, a.page_size].filter(Boolean).join(' · ') || a.description || ''),
+      h('span', { class: 'platform-check' }, '✓'),
+    ])))
+  }
+
+  function formError(msg, retry) {
+    formCard.style.display = ''
+    formCard.replaceChildren(h('div', { class: 'tip', style: 'color:var(--danger)' }, msg),
+      retry ? h('button', { class: 'btn btn-sm', style: 'margin-top:10px', onclick: retry }, '重新加载') : null)
+  }
+
+  async function selectApp(id) {
+    if (submitting || !id) return
+    selId = id
+    detail = null
+    drawCards()
+    resultBox.replaceChildren()
+    formCard.style.display = ''
+    formCard.replaceChildren(h('div', { class: 'tip' }, '模板加载中…'))
+    try {
+      const d = await api.bingApplication(id)
+      if (selId !== id) return
+      detail = d
+      drawForm()
+    } catch (e) {
+      if (selId !== id) return
+      formError(e.status === 503 ? '病例功能暂未开放' : '模板加载失败：' + e.message, () => selectApp(id))
+    }
+  }
+
+  function drawForm() {
+    const fieldsBox = h('div', { class: 'form-grid' })
+    const inputs = new Map()
+    const orderedFields = bingOrderedFields(detail.fields)
+    for (const f of orderedFields) {
+      const label = f.label || f.field_key
+      const attrs = { class: 'input', placeholder: label }
+      if (f.max_length > 0) attrs.maxlength = f.max_length
+      const isTextarea = String(f.type || '').toLowerCase() === 'textarea'
+      const input = isTextarea
+        ? h('textarea', { ...attrs, rows: '3' })
+        : h('input', { ...attrs, type: 'text' })
+      inputs.set(f.field_key, input)
+      // 长文本（诊断/建议）占满整行，短字段保持两列，避免表单显得零散
+      fieldsBox.appendChild(h('div', { class: 'field', style: isTextarea ? 'grid-column:1/-1' : '' }, [
+        h('label', null, [label, f.required ? h('span', { style: 'color:var(--danger)' }, ' *') : null]),
+        input,
+      ]))
+    }
+
+    const stampInputs = new Map()
+    let stampBox = null
+    if (detail.stamp) {
+      const orgKey = detail.stamp.org_field || 'stampOrg'
+      const codeKey = detail.stamp.code_field || 'stampCode'
+      const org = h('input', { class: 'input', placeholder: detail.stamp.default_org ? `默认：${detail.stamp.default_org}` : '不填使用模板默认印章' })
+      const code = h('input', { class: 'input', placeholder: detail.stamp.default_code ? `默认：${detail.stamp.default_code}` : '不填使用模板默认印章文字' })
+      stampInputs.set(orgKey, org)
+      stampInputs.set(codeKey, code)
+      stampBox = h('div', { class: 'form-grid', style: 'margin-top:12px' }, [
+        h('div', { class: 'field' }, [h('label', null, '印章名称（选填）'), org]),
+        h('div', { class: 'field' }, [h('label', null, '印章文字（选填）'), code]),
+      ])
+    }
+
+    const preview = h('div', { style: 'margin-top:14px' }, [
+      h('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:6px' }, '模板样式预览（提交后生成含填写内容的图片）'),
+      h('img', {
+        src: `/api/bing/applications/${encodeURIComponent(detail.id)}/preview`,
+        alt: '模板预览',
+        style: 'display:block;width:100%;max-width:720px;border-radius:12px;border:1px solid var(--border);background:#fff',
+        onerror: (e) => { e.target.replaceWith(h('div', { class: 'tip' }, '该模板暂无预览图')) },
+      }),
+    ])
+
+    const submitBtn = h('button', { class: 'btn btn-primary', type: 'submit' }, `提交生成（${fmtNum(detail.price_points)} 积分）`)
+    const form = h('form', { onsubmit: async (e) => {
+      e.preventDefault()
+      if (submitting || !detail) return
+      const fields = {}
+      for (const [key, input] of inputs) {
+        const v = input.value.trim()
+        if (v) fields[key] = v
+      }
+      const missing = orderedFields.find((f) => f.required && !fields[f.field_key])
+      if (missing) {
+        showToast('请填写：' + (missing.label || missing.field_key), 'warning')
+        return
+      }
+      for (const [key, input] of stampInputs) {
+        const v = input.value.trim()
+        if (v) fields[key] = v
+      }
+      submitting = true
+      submitBtn.disabled = true
+      submitBtn.textContent = '提交中，正在生成…'
+      try {
+        const v = await api.bingCreateOrder({
+          application_id: selId,
+          fields,
+          // 后端按实时价复核；期间管理员改价会返回 409，不会按新价静默扣款
+          expected_price_fen: detail.price_fen,
+        })
+        for (const input of inputs.values()) input.value = ''
+        for (const input of stampInputs.values()) input.value = ''
+        showBingResult(v, resultBox)
+        showToast(v.status === 'processing' ? '订单已提交，正在生成图片' : '下单成功', 'success')
+      } catch (err) {
+        // 409 = 模板价格已被后台更新：只刷新价格与按钮，保留用户已填内容
+        if (err.status === 409) {
+          try {
+            detail = await api.bingApplication(selId)
+            submitBtn.textContent = `提交生成（${fmtNum(detail.price_points)} 积分）`
+            const total = form.querySelector('.pay-total')
+            if (total) total.textContent = `本次扣 ${fmtNum(detail.price_points)} 积分`
+          } catch {}
+        }
+        showToast(err.message, 'error')
+      } finally {
+        submitting = false
+        submitBtn.disabled = false
+        submitBtn.textContent = `提交生成（${fmtNum(detail.price_points)} 积分）`
+      }
+    } }, [
+      h('div', { class: 'step-head' }, [
+        h('span', { class: 'step-no' }, '1'),
+        h('div', null, [h('h3', { class: 'step-title' }, detail.name), h('p', { class: 'step-desc' }, detail.description || '请按模板要求填写以下内容')]),
+      ]),
+      fieldsBox,
+      stampBox,
+      preview,
+      h('div', { class: 'tip', style: 'margin-top:12px' }, '填写内容仅用于生成病例图片，服务端加密存储，不会展示给其他用户。'),
+      h('div', { class: 'step-footer' }, [
+        h('span', { class: 'pay-total' }, `本次扣 ${fmtNum(detail.price_points)} 积分`),
+        submitBtn,
+      ]),
+    ])
+
+    formCard.replaceChildren(h('div', { class: 'step-head' }, [
+      h('span', { class: 'step-no' }, '2'),
+      h('div', null, [h('h3', { class: 'step-title' }, '填写并提交'), h('p', { class: 'step-desc' }, '必填项已标注 *，图片生成后可在个人中心【病例】查看')]),
+    ]), form)
+  }
+
+  function showBingResult(v, box) {
+    const refresh = async () => {
+      try {
+        const nv = await api.bingOrder(v.order_id)
+        showBingResult(nv, box)
+      } catch (e) { showToast('刷新失败：' + e.message, 'error') }
+    }
+    const retry = async (btn) => {
+      btn.disabled = true; btn.textContent = '重试中…'
+      try {
+        const nv = await api.bingRetryOrder(v.order_id)
+        showBingResult(nv, box)
+      } catch (e) {
+        showToast(e.message, 'error')
+        btn.disabled = false; btn.textContent = '重试生成'
+      }
+    }
+
+    const children = [
+      h('div', { class: 'step-head' }, [
+        h('span', { class: 'step-no' }, '✓'),
+        h('div', null, [
+          h('h3', { class: 'step-title' }, v.status === 'processing' ? '订单已提交' : '下单成功'),
+          h('p', { class: 'step-desc' }, v.application_name || ''),
+        ]),
+      ]),
+      h('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px' }, [
+        bingStatusBadge(v),
+        h('span', { class: 'tip' }, `扣 ${fmtNum(v.price_points)} 积分 · 订单号 ${v.order_id}`),
+      ]),
+    ]
+
+    if (v.image_ready && v.image_url) {
+      children.push(h('img', {
+        src: v.image_url, alt: '病例图片',
+        style: 'max-width:100%;border-radius:12px;border:1px solid var(--border);margin-top:6px',
+        onerror: (e) => { e.target.replaceWith(h('div', { class: 'tip' }, '图片加载失败，可能仍在生成，请稍后刷新')) },
+      }))
+      children.push(h('div', { class: 'tip', style: 'margin-top:10px' }, '图片仅本人可见，上游云端保留 3 天，请及时保存。'))
+      children.push(h('div', { style: 'margin-top:12px;display:flex;gap:10px;flex-wrap:wrap' }, [
+        h('a', { class: 'btn btn-primary btn-sm', href: v.image_url, download: `病例-${v.order_id}.png`, target: '_blank', rel: 'noopener' }, '保存图片'),
+        h('a', { class: 'btn btn-sm', href: '/agent#bing' }, '去个人中心查看'),
+      ]))
+    } else if (v.status === 'processing') {
+      children.push(h('div', { class: 'tip', style: 'margin-top:8px' }, '上游正在处理，图片稍后生成。订单已扣积分；若失败会自动退款。'))
+      children.push(h('div', { style: 'margin-top:12px;display:flex;gap:10px;flex-wrap:wrap' }, [
+        h('button', { class: 'btn btn-sm', onclick: () => refresh() }, '刷新状态'),
+        h('button', { class: 'btn btn-sm', onclick: (e) => retry(e.currentTarget) }, '重试生成'),
+        h('a', { class: 'btn btn-sm', href: '/agent#bing' }, '去个人中心查看'),
+      ]))
+    } else {
+      children.push(h('div', { class: 'tip', style: 'margin-top:8px' }, v.render_error ? '图片暂未生成：' + v.render_error : '订单已完成，图片仍在准备中。'))
+      children.push(h('div', { style: 'margin-top:12px;display:flex;gap:10px;flex-wrap:wrap' }, [
+        h('button', { class: 'btn btn-sm', onclick: () => refresh() }, '刷新状态'),
+        h('a', { class: 'btn btn-sm', href: `/api/bing/orders/${encodeURIComponent(v.order_id)}/image`, target: '_blank', rel: 'noopener' }, '尝试打开图片'),
+        h('a', { class: 'btn btn-sm', href: '/agent#bing' }, '去个人中心查看'),
+      ]))
+    }
+    box.replaceChildren(h('div', { class: 'card step-card' }, children))
+  }
+
+  ;(async () => {
+    try {
+      const d = await api.bingApplications()
+      apps = Array.isArray(d.items) ? d.items : []
+    } catch (e) {
+      apps = []
+      statusBox.textContent = e.status === 503 ? '病例功能暂未开放，请稍后再试' : '病例模板加载失败：' + e.message
+      return
+    }
+    if (!apps.length) {
+      statusBox.textContent = '暂无可用的病例模板，请稍后再试'
+      return
+    }
+    statusBox.remove()
+    selId = apps[0].id
+    drawCards()
+    selectApp(selId)
+  })()
+}
+
+/* ==================== 学习通自动签到（qd，独立模块 · qd_auto 单页风格） ==================== */
+
+let qdStylesInjected = false
+function qdInjectStyles() {
+  if (qdStylesInjected) return
+  qdStylesInjected = true
+  const st = document.createElement('style')
+  st.id = 'qd-scoped-styles'
+  st.textContent = `
+.qd-wrap{max-width:880px;margin:0 auto;color:#151a26;
+  background:radial-gradient(900px 320px at 18% -6%,rgba(91,91,214,.055),transparent 60%),
+    radial-gradient(700px 300px at 100% 0%,rgba(16,150,110,.04),transparent 55%),
+    linear-gradient(180deg,#f8f9fd,#f0f2f7);
+  border:1px solid #e9ecf3;border-radius:20px;padding:26px 26px 30px;
+  box-shadow:0 1px 2px rgba(21,26,38,.03),0 10px 34px -18px rgba(21,26,38,.10)}
+.qd-topbar{display:flex;align-items:center;gap:16px;margin-bottom:20px;padding-bottom:18px;
+  border-bottom:1px solid #e9ecf3;flex-wrap:wrap;animation:qdRise .45s cubic-bezier(.22,.9,.32,1) both}
+.qd-topbar .qd-bar{width:4px;height:38px;border-radius:99px;background:linear-gradient(180deg,#6366f1,#8b5cf6);flex:none}
+.qd-topbar h1{font-size:20px;font-weight:750;letter-spacing:-.2px;margin:0;color:#151a26}
+.qd-topbar .qd-sub{font-size:12.5px;color:#96a0b2;margin-top:4px;letter-spacing:.2px}
+.qd-topbar .qd-sp{flex:1}
+@keyframes qdRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.qd-card{background:#fff;border:1px solid #e9ecf3;border-radius:16px;padding:16px;margin-bottom:14px;
+  box-shadow:0 1px 2px rgba(21,26,38,.03),0 10px 34px -18px rgba(21,26,38,.10);
+  animation:qdRise .5s cubic-bezier(.22,.9,.32,1) .06s both}
+.qd-m-sec{font-size:11px;font-weight:700;letter-spacing:1.5px;color:#96a0b2;margin:2px 0 10px;text-transform:uppercase}
+.qd-read-list{list-style:none;margin:0;padding:0}
+.qd-read-list li{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed #f0f2f8;
+  font-size:13px;color:#5c6575;line-height:1.75;align-items:flex-start}
+.qd-read-list li:last-child{border-bottom:none;padding-bottom:2px}
+.qd-read-list .qd-n{flex:none;width:20px;height:20px;border-radius:50%;background:#eef0fe;color:#5b5bd6;
+  font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:3px}
+.qd-read-list li b{color:#151a26;font-weight:600}
+.qd-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;animation:qdRise .5s cubic-bezier(.22,.9,.32,1) .03s both}
+.qd-chip{font-size:12px;padding:5px 12px;border-radius:8px;background:#fff;border:1px solid #e9ecf3;
+  color:#96a0b2;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.qd-chip b{color:#151a26;font-variant-numeric:tabular-nums;font-weight:700}
+.qd-chip.on b{color:#0a9e6e}
+.qd-chip.bad b{color:#d93838}
+.qd-pkgs{display:flex;gap:10px;margin-bottom:16px}
+.qd-pkg{border:1.5px solid #e9ecf3;border-radius:12px;padding:12px 18px;cursor:pointer;transition:.18s;
+  background:#fff;text-align:center;flex:1;position:relative}
+.qd-pkg:hover{border-color:#c9cef0}
+.qd-pkg.active{border-color:#5b5bd6;background:#fbfbff;box-shadow:0 0 0 3px rgba(99,102,241,.10)}
+.qd-pkg.active::before{content:'✓';position:absolute;top:-7px;right:-5px;width:18px;height:18px;border-radius:50%;
+  background:#5b5bd6;color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.qd-pkg .qd-pkg-n{font-size:13.5px;font-weight:700;color:#151a26}
+.qd-pkg .qd-pkg-m{font-size:11.5px;color:#96a0b2;margin-top:3px;font-variant-numeric:tabular-nums}
+.qd-pkg.active .qd-pkg-m{color:#5b5bd6}
+.qd-field{margin-bottom:13px}
+.qd-field label{display:block;font-size:12.5px;font-weight:600;color:#5c6575;margin-bottom:6px}
+.qd-input{background:#f8f9fc;border:1.5px solid #e9ecf3;border-radius:10px;
+  padding:11px 13px;font-size:14px;color:#151a26;outline:none;width:100%;transition:.18s;font-family:inherit;box-sizing:border-box}
+.qd-input::placeholder{color:#b6bdcc}
+.qd-input:focus{border-color:#a6abf5;background:#fff;box-shadow:0 0 0 3.5px rgba(99,102,241,.10)}
+.qd-pw-wrap{position:relative}
+.qd-pw-wrap .qd-input{padding-right:42px}
+.qd-eye{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:none;background:transparent;
+  cursor:pointer;font-size:15px;padding:7px 9px;border-radius:8px;line-height:1;opacity:.6;transition:.15s}
+.qd-eye:hover{opacity:1;background:#eef0f7}
+.qd-hint{font-size:12px;color:#96a0b2;line-height:1.7}
+.qd-btn{border:none;border-radius:10px;padding:11px 20px;font-size:13.5px;font-weight:600;cursor:pointer;
+  transition:.2s;font-family:inherit;display:inline-flex;align-items:center;gap:7px;justify-content:center}
+.qd-btn:disabled{opacity:.55;cursor:not-allowed}
+.qd-btn-go{color:#fff;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#6366f1,#8b5cf6 62%,#8b5cf6);
+  box-shadow:0 6px 18px -4px rgba(99,102,241,.42),inset 0 1px 0 rgba(255,255,255,.25)}
+.qd-btn-go::after{content:'';position:absolute;top:0;left:-80%;width:55%;height:100%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.32),transparent);
+  transform:skewX(-18deg);transition:left .5s ease}
+.qd-btn-go:hover:not(:disabled)::after{left:130%}
+.qd-btn-go:hover:not(:disabled){transform:translateY(-1px)}
+.qd-btn-sm{border-radius:8px;padding:6px 13px;font-size:12.5px;background:#fff;border:1px solid #e9ecf3;
+  color:#5c6575;box-shadow:none;font-weight:500;cursor:pointer;transition:.18s;font-family:inherit}
+.qd-btn-sm:hover{color:#5b5bd6;border-color:#ccd2f2;background:#fafbff}
+.qd-btn-sm.qd-primary{background:#eef0fe;border-color:#dfe3fc;color:#5b5bd6;font-weight:600}
+.qd-btn-sm.qd-primary:hover{background:#e4e8ff}
+.qd-btn-sm:disabled{opacity:.55;cursor:not-allowed}
+.qd-acct{display:flex;align-items:center;gap:14px;padding:13px 14px;border-radius:12px;margin-bottom:8px;
+  border:1px solid transparent;transition:.18s;cursor:pointer}
+.qd-acct:last-child{margin-bottom:0}
+.qd-acct:hover{background:#fafbfe;border-color:#e9ecf3}
+.qd-acct.off{opacity:.66}
+.qd-avt{width:40px;height:40px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+.qd-avt.qd-run{background:#ecf9f3;color:#0a9e6e}
+.qd-avt.qd-idle{background:#f1f3f8;color:#96a0b2}
+.qd-avt.qd-err{background:#fdf0f0;color:#d93838}
+.qd-acct .qd-info{flex:1;min-width:0}
+.qd-acct .qd-ph{font-size:14.5px;font-weight:650;display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#151a26}
+.qd-acct .qd-ph .qd-pkg-tag{font-size:10.5px;font-weight:600;color:#5b5bd6;background:#eef0fe;border-radius:5px;padding:1.5px 7px}
+.qd-acct .qd-meta{font-size:12px;color:#96a0b2;margin-top:4px;display:flex;gap:11px;flex-wrap:wrap}
+.qd-acct .qd-meta .qd-ok-c{color:#0a9e6e;font-weight:600}
+.qd-acct .qd-meta .qd-bad-c{color:#d93838;font-weight:600}
+.qd-acct .qd-meta .qd-last{min-width:100%;color:#96a0b2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qd-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex:none;max-width:250px}
+.qd-pill{display:inline-flex;align-items:center;gap:5.5px;padding:3px 10px;border-radius:999px;
+  font-size:11px;font-weight:600;white-space:nowrap}
+.qd-pill.qd-on{background:#ecf9f3;color:#0a9e6e}
+.qd-pill.qd-off{background:#f2f4f9;color:#96a0b2}
+.qd-pill.qd-err{background:#fdf0f0;color:#d93838}
+.qd-pill.qd-wrn{background:#fdf5e9;color:#b25e09}
+.qd-dot{width:5.5px;height:5.5px;border-radius:50%;background:#c8cfdb;position:relative;flex:none}
+.qd-pill.qd-on .qd-dot{background:#10b981}
+.qd-pill.qd-on .qd-dot::after{content:'';position:absolute;inset:-3px;border-radius:50%;
+  border:1.5px solid #10b981;animation:qdRipple 1.6s ease-out infinite}
+@keyframes qdRipple{0%{transform:scale(.6);opacity:1}100%{transform:scale(1.7);opacity:0}}
+.qd-term{font-size:12px;line-height:1.8;max-height:300px;overflow:auto;background:#f8f9fc;
+  border:1px solid #f0f2f8;border-radius:12px;padding:9px 13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.qd-term::-webkit-scrollbar{width:6px}
+.qd-term::-webkit-scrollbar-thumb{background:#dde2ee;border-radius:3px}
+.qd-log-line{display:flex;gap:9px;padding:4px 2px;border-bottom:1px dashed #eef1f6;align-items:flex-start}
+.qd-log-line:last-child{border-bottom:none}
+.qd-log-line .qd-t{color:#96a0b2;flex:none;font-size:11px;padding-top:2.5px;font-variant-numeric:tabular-nums}
+.qd-log-line .qd-lv{width:6px;height:6px;border-radius:50%;background:#c8cfdb;flex:none;margin-top:8px}
+.qd-log-line.qd-ok .qd-lv{background:#10b981}
+.qd-log-line.qd-bad .qd-lv{background:#ef4444}
+.qd-log-line.qd-warn .qd-lv{background:#f59e0b}
+.qd-log-line.qd-sign .qd-lv{background:#6366f1}
+.qd-log-line .qd-m{flex:1;word-break:break-all;color:#5c6575}
+.qd-log-line.qd-ok .qd-m{color:#0a9e6e}
+.qd-log-line.qd-bad .qd-m{color:#d93838}
+.qd-log-line.qd-warn .qd-m{color:#b25e09}
+.qd-log-line.qd-sign .qd-m{color:#5b5bd6;font-weight:600;font-family:inherit}
+.qd-rec-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+.qd-rec-table th{font-size:11px;color:#96a0b2;text-align:left;font-weight:600;padding:6px 8px;border-bottom:1px solid #f0f2f8}
+.qd-rec-table td{padding:7px 8px;border-bottom:1px dashed #eef1f6;color:#5c6575}
+.qd-rec-table tr:last-child td{border-bottom:none}
+.qd-face-row{display:flex;gap:12px;align-items:flex-start}
+.qd-face-box{flex:none;width:88px;height:88px;border:1.5px dashed #ccd3e0;border-radius:14px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  background:#fbfcfe;transition:.2s;overflow:hidden;position:relative}
+.qd-face-box:hover{border-color:#a6abf5;background:#fafbff}
+.qd-face-box .qd-face-ph{font-size:19px;line-height:1}
+.qd-face-box .qd-face-t{font-size:10.5px;color:#96a0b2}
+.qd-face-box.qd-done{border-style:solid;border-color:#c2e9d8;background:#ecf9f3}
+.qd-face-box.qd-done .qd-face-ph{color:#0a9e6e}
+.qd-mask{position:fixed;inset:0;background:rgba(21,26,38,.40);backdrop-filter:blur(3px);z-index:90;
+  opacity:0;pointer-events:none;transition:.22s}
+.qd-mask.qd-show{opacity:1;pointer-events:auto}
+.qd-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-46%) scale(.97);width:min(640px,94vw);
+  max-height:88vh;overflow:auto;background:#fff;border-radius:18px;padding:22px;z-index:91;
+  opacity:0;pointer-events:none;transition:.24s cubic-bezier(.22,.9,.32,1);
+  box-shadow:0 24px 70px -12px rgba(21,26,38,.32)}
+.qd-modal.qd-show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.qd-modal h3{font-size:16px;font-weight:700;margin:0 0 4px;color:#151a26}
+.qd-modal .qd-m-sub{font-size:12px;color:#96a0b2;margin-bottom:16px}
+.qd-m-close{position:absolute;top:14px;right:14px;border:none;background:#f3f5fa;width:28px;height:28px;
+  border-radius:8px;cursor:pointer;font-size:13px;color:#5c6575;transition:.15s}
+.qd-m-close:hover{background:#e9ecf4;color:#151a26}
+.qd-spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);
+  border-top-color:#fff;border-radius:50%;animation:qdSpin .7s linear infinite;vertical-align:-2px}
+@keyframes qdSpin{to{transform:rotate(360deg)}}
+.qd-success{text-align:center;padding:34px 20px}
+.qd-success .qd-big{width:56px;height:56px;margin:0 auto 14px;border-radius:18px;font-size:26px;
+  display:flex;align-items:center;justify-content:center;background:#ecf9f3;color:#0a9e6e}
+.qd-success h3{font-size:16px;font-weight:750;margin:0 0 6px;color:#151a26}
+.qd-success .qd-suc-sub{font-size:12.5px;color:#96a0b2;line-height:1.8;margin-bottom:16px}
+@media (max-width:640px){
+  .qd-wrap{padding:18px 14px 22px;border-radius:16px}
+  .qd-topbar h1{font-size:17.5px}
+  .qd-card{padding:12px;border-radius:14px}
+  .qd-acct{flex-wrap:wrap}
+  .qd-acct .qd-info{flex:1 1 100%}
+  .qd-acts{max-width:none;width:100%;justify-content:flex-start}
+  .qd-chips{width:100%}
+  .qd-pkgs{flex-direction:column}
+}
+`
+  document.head.appendChild(st)
+}
+
+// 状态 → 胶囊/头像样式（对齐 qd_auto.php statusView）
+function qdStatusMeta(o) {
+  if (o.status === 'error') return { pill: 'qd-err', label: '开通失败', avt: 'qd-err' }
+  if (o.status === 'processing') return { pill: 'qd-off', label: '开通中', avt: 'qd-idle' }
+  if (o.status === 'done') return { pill: 'qd-off', label: '已结束', avt: 'qd-idle' }
+  if (o.status === 'pending_on') return { pill: 'qd-wrn', label: '待上号', avt: 'qd-idle' }
+  if (o.status === 'active') {
+    if (o.engine_status === 'failed') return { pill: 'qd-err', label: '登录失败', avt: 'qd-err' }
+    if (o.engine_status === 'stopped') return { pill: 'qd-wrn', label: '已暂停', avt: 'qd-idle' }
+    if (o.engine_status === 'logged_in') return { pill: 'qd-wrn', label: '待启动', avt: 'qd-idle' }
+    if (o.engine_status === 'running') return { pill: 'qd-on', label: '监控中', avt: 'qd-run' }
+  }
+  return { pill: 'qd-off', label: '同步中…', avt: 'qd-idle' }
+}
+
+function qdPill(o) {
+  const m = qdStatusMeta(o)
+  return h('span', { class: `qd-pill ${m.pill}` }, [h('span', { class: 'qd-dot' }), m.label])
+}
+
+function qdAvt(phone, o) {
+  const m = qdStatusMeta(o)
+  return h('div', { class: `qd-avt ${m.avt}` }, String(phone || '').slice(-4) || '??')
+}
+
+// 倒计时文本：服务到期
+function qdEndText(o) {
+  if (!o.end_at) return '服务期待同步'
+  const days = Math.ceil((o.end_at * 1000 - Date.now()) / 86400000)
+  if (days <= 0) return '今日到期'
+  return `剩 ${days} 天 · ${fmtTime(o.end_at)} 到期`
+}
+
+// 服务大厅：开通页（顶栏 + 必读 + 套餐/表单 + 成功态）
+function renderQdFlow(el) {
+  qdInjectStyles()
+  const view = h('div', { class: 'qd-wrap' })
+  el.replaceChildren(view)
+
+  view.appendChild(h('div', { class: 'qd-topbar' }, [
+    h('div', { class: 'qd-bar' }),
+    h('div', { class: 'qd-tt' }, [
+      h('h1', null, '学习通自动签到'),
+      h('div', { class: 'qd-sub' }, '全天候监控签到活动 · 位置/拍照/二维码/手势/签到码/人脸 全类型支持'),
+    ]),
+  ]))
+
+  const readCard = h('div', { class: 'qd-card' }, [
+    h('div', { class: 'qd-m-sec' }, '下单必读'),
+    h('ul', { class: 'qd-read-list' }, [
+      ['开通即监控', '登录成功后引擎自动监控该账号全部课程的签到活动，无需挂机'],
+      ['按期计费', '周卡 7 天 / 月卡 30 天，服务期内不限签到次数，重新上号不再收费'],
+      ['密码安全', '学习通密码仅用于登录与掉线重连，服务器 AES 加密存储，页面永不显示'],
+      ['微信提醒', '可在订单详情绑定推送，签到结果实时推到微信'],
+    ].map((item, i) => h('li', null, [h('span', { class: 'qd-n' }, String(i + 1)), h('span', null, [h('b', null, item[0] + '　'), item[1]])])),
+    ),
+  ])
+  view.appendChild(readCard)
+
+  const statusBox = h('div', { class: 'qd-card', style: 'text-align:center;color:#96a0b2;font-size:13px' }, '卡型加载中…')
+  const formCard = h('div', { class: 'qd-card', style: 'display:none' })
+  const resultBox = h('div')
+  view.appendChild(statusBox)
+  view.appendChild(formCard)
+  view.appendChild(resultBox)
+
+  let plans = []
+  let selPlan = ''
+  let submitting = false
+
+  function drawCards() {
+    const p = plans.find((x) => x.key === selPlan)
+    formCard.replaceChildren(
+      h('div', { class: 'qd-m-sec' }, '选择套餐'),
+      h('div', { class: 'qd-pkgs' }, plans.map((x) => h('div', {
+        class: 'qd-pkg' + (x.key === selPlan ? ' active' : ''),
+        onclick: () => { selPlan = x.key; drawCards() },
+      }, [
+        h('div', { class: 'qd-pkg-n' }, x.name),
+        h('div', { class: 'qd-pkg-m' }, `${fmtNum(x.price)} 积分 · ${x.days} 天`),
+      ]))),
+      h('form', { onsubmit: async (e) => {
+        e.preventDefault()
+        if (submitting) return
+        const plan = plans.find((x) => x.key === selPlan)
+        if (!plan || !phone.value.trim() || !pass.value) return
+        submitting = true
+        submitBtn.disabled = true
+        submitBtn.innerHTML = '<span class="qd-spin"></span> 开通中'
+        resultBox.replaceChildren()
+        try {
+          const v = await api.qdCreateOrder({ phone: phone.value.trim(), pass: pass.value, plan: selPlan, expected_points: plan.price })
+          formCard.style.display = 'none'
+          resultBox.replaceChildren(qdSuccessCard(v))
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        } catch (err) {
+          resultBox.replaceChildren(h('div', { class: 'qd-hint', style: 'color:#d93838;padding:10px 2px' }, err.message))
+          submitBtn.disabled = false
+          submitBtn.textContent = '立即开通'
+        } finally {
+          submitting = false
+        }
+      } }, [
+        h('div', { class: 'qd-field' }, [h('label', null, '学习通手机号'), phone]),
+        h('div', { class: 'qd-field' }, [h('label', null, '学习通密码'), pass]),
+        h('div', { class: 'qd-hint', style: 'margin:2px 0 16px' },
+          `开通即扣除 ${fmtNum(p ? p.price : 0)} 积分（余额在右上角），服务期内重新上号免费；遇到需要人脸的签到，开通后在订单详情上传一次档案照片即可。`),
+        h('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' }, [
+          submitBtn,
+          h('a', { class: 'qd-btn qd-btn-sm', style: 'text-decoration:none', href: '/agent#qd' }, '我的签到订单'),
+        ]),
+      ]),
+    )
+    formCard.style.display = ''
+  }
+
+  const phone = h('input', { class: 'qd-input', placeholder: '学习通手机号', autocomplete: 'username', inputmode: 'numeric' })
+  const pass = h('input', { class: 'qd-input', placeholder: '学习通密码', type: 'password', autocomplete: 'current-password' })
+  const eye = h('button', { class: 'qd-eye', type: 'button', tabindex: '-1', onclick: () => {
+    pass.type = pass.type === 'password' ? 'text' : 'password'
+    eye.textContent = pass.type === 'password' ? '👁' : '🙈'
+  } }, '👁')
+  const passWrap = h('div', { class: 'qd-pw-wrap' }, [pass, eye])
+  const submitBtn = h('button', { class: 'qd-btn qd-btn-go', type: 'submit' }, '立即开通')
+
+  function qdSuccessCard(v) {
+    const okOpen = v.status === 'active'
+    const pending = v.status === 'pending_on'
+    return h('div', { class: 'qd-card qd-success', style: 'animation:qdRise .5s cubic-bezier(.22,.9,.32,1) both' }, [
+      h('div', { class: 'qd-big' }, okOpen ? '✓' : (pending ? '⏳' : '!')),
+      h('h3', null, okOpen ? '开通成功，自动监控已启动' : (pending ? '下单成功，等待上号' : '请查看订单状态')),
+      h('div', { class: 'qd-suc-sub' }, [
+        h('div', null, `手机号 ${v.phone} · ${v.plan_name} · 已扣 ${fmtNum(v.price_points)} 积分`),
+        v.last_msg ? h('div', null, v.last_msg) : null,
+        pending ? h('div', { style: 'color:#b25e09' }, '学习通密码可能有误：去个人中心「自动签到」点重新上号即可免费重试') : null,
+      ]),
+      h('div', { style: 'display:flex;gap:10px;justify-content:center;flex-wrap:wrap' }, [
+        h('a', { class: 'qd-btn qd-btn-go', style: 'text-decoration:none', href: '/agent#qd' }, '查看监控状态 / 实时日志'),
+      ]),
+    ])
+  }
+
+  ;(async () => {
+    try {
+      const d = await api.qdPlans()
+      plans = Array.isArray(d.plans) ? d.plans : []
+    } catch (e) {
+      statusBox.textContent = e.status === 503 ? '自动签到功能暂未开放' : '加载失败：' + e.message
+      return
+    }
+    if (!plans.length) {
+      statusBox.textContent = '暂无可用的卡型，请稍后再试'
+      return
+    }
+    statusBox.remove()
+    selPlan = plans[0].key
+    drawCards()
+  })()
+}
+
+// ---------- 个人中心：自动签到工作台 ----------
+
+let qdDetailCleanup = null // 详情弹窗的轮询定时器（切页时清理）
+
+function qdCloseDetail() {
+  if (qdDetailCleanup) {
+    qdDetailCleanup()
+    qdDetailCleanup = null
+  }
+  document.querySelectorAll('.qd-mask,.qd-modal').forEach((n) => n.remove())
+}
+
+// 个人中心：账号卡片墙 + 详情弹窗（日志终端 / 签到记录 / 重新上号 / 人脸）
+function renderQdOrders(panel) {
+  // 自动签到的完整工作台（日志/推送/人脸/重新上号）在独立单页 /qd，
+  // 这里只保留快速入口，避免两套界面功能不同步。
+  qdInjectStyles()
+  panel.replaceChildren(h('div', { class: 'qd-wrap', style: 'text-align:center;padding:40px 20px' }, [
+    h('div', { style: 'width:56px;height:56px;margin:0 auto 14px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:26px;background:#eef0fe;color:#5b5bd6' }, '⏰'),
+    h('div', { style: 'font-size:15px;font-weight:700;margin-bottom:6px' }, '学习通自动签到工作台'),
+    h('div', { style: 'font-size:12.5px;color:#96a0b2;line-height:1.8;margin-bottom:18px' },
+      '监控状态 · 实时日志 · 微信推送 · 人脸照片 · 重新上号，全部在独立工作台页管理'),
+    h('a', { class: 'qd-btn qd-btn-go', style: 'text-decoration:none', href: '/qd' }, '打开签到工作台 →'),
+  ]))
+}
+
+// 个人中心：病例订单列表
+function renderBingOrders(panel) {
+  let items = null
+  const body = h('tbody')
+  const cardsBox = h('div', { class: 'ag-cards' })
+  const mobile = isMobileView()
+
+  const load = async () => {
+    try {
+      const d = await api.bingOrders()
+      items = Array.isArray(d.items) ? d.items : []
+      draw()
+    } catch (e) {
+      showToast('加载失败：' + e.message, 'error')
+    }
+  }
+
+  const detailBtn = (o) => h('button', { class: 'btn btn-sm', onclick: () => renderBingOrderDetail(panel, o.order_id) }, '详情')
+  const imageBtn = (o) => o.image_url
+    ? h('a', { class: 'btn btn-sm', href: o.image_url, target: '_blank', rel: 'noopener' }, '查看图片')
+    : h('span', { class: 'progress-tip' }, o.status === 'error' ? '已退款' : '生成中')
+  const retryBtn = (o) => o.status === 'processing'
+    ? h('button', { class: 'btn btn-sm', onclick: async (e) => {
+        const btn = e.currentTarget
+        btn.disabled = true; btn.textContent = '重试中…'
+        try {
+          await api.bingRetryOrder(o.order_id)
+          showToast('已重新提交生成', 'success')
+          await load()
+        } catch (err) {
+          showToast(err.message, 'error')
+          btn.disabled = false; btn.textContent = '重试'
+        }
+      } }, '重试')
+    : null
+
+  function draw() {
+    if (!items) return
+    if (!items.length) {
+      const node = h('div', { class: 'empty' }, '还没有病例订单，去首页【病例】下一单吧')
+      if (mobile) cardsBox.replaceChildren(node)
+      else body.replaceChildren(h('tr', null, h('td', { colSpan: 6 }, node)))
+      return
+    }
+    if (mobile) {
+      cardsBox.replaceChildren(...items.map((o) => h('div', { class: 'ag-card' }, [
+        h('div', { class: 'ag-card-top' }, [h('b', null, o.application_name || o.application_id), bingStatusBadge(o)]),
+        h('div', { class: 'ag-card-line' }, [
+          h('span', null, `扣 ${fmtNum(o.price_points)} 积分`),
+          h('span', { class: 'ag-card-money' }, fmtTime(o.created_at)),
+        ]),
+        h('div', { class: 'ag-card-line', style: 'gap:8px;flex-wrap:wrap' }, [detailBtn(o), imageBtn(o), retryBtn(o)]),
+      ])))
+    } else {
+      body.replaceChildren(...items.map((o) => h('tr', {}, [
+        h('td', null, fmtTime(o.created_at)),
+        h('td', null, o.application_name || o.application_id),
+        h('td', null, fmtMoney(o.amount_fen)),
+        h('td', null, bingStatusBadge(o)),
+        h('td', null, imageBtn(o)),
+        h('td', null, h('div', { style: 'display:flex;gap:8px' }, [detailBtn(o), retryBtn(o)])),
+      ])))
+    }
+  }
+
+  const refreshBtn = h('button', { class: 'btn btn-sm', onclick: load }, '↻ 刷新')
+  const listWrap = mobile
+    ? cardsBox
+    : h('div', { class: 'agent-table-wrap ag-table-card' }, h('table', { class: 'agent-table' }, [
+      h('thead', null, h('tr', null, ['时间', '模板', '金额', '状态', '图片', '操作'].map((x) => h('th', null, x)))),
+      body,
+    ]))
+  panel.replaceChildren(h('section', null, [
+    panelHead('病例', '病例图片订单；图片上游仅保留 3 天，请及时保存', h('span', null, [refreshBtn])),
+    listWrap,
+  ]))
+  load()
+}
+
+// 个人中心：病例订单详情（含本人填写的字段）
+function renderBingOrderDetail(panel, orderId) {
+  const backBtn = h('button', { class: 'btn btn-sm', onclick: () => renderBingOrders(panel) }, '← 返回列表')
+  panel.replaceChildren(h('section', null, [
+    panelHead('病例订单详情', `订单号 ${orderId}`, backBtn),
+    h('div', { class: 'empty' }, '加载中…'),
+  ]))
+
+  ;(async () => {
+    let o
+    try {
+      o = await api.bingOrder(orderId)
+    } catch (e) {
+      panel.replaceChildren(h('section', null, [panelHead('病例订单详情', '', backBtn), h('div', { class: 'empty' }, '加载失败：' + e.message)]))
+      return
+    }
+    let labels = {}
+    try {
+      const d = await api.bingApplication(o.application_id)
+      ;(d.fields || []).forEach((f) => { labels[f.field_key] = f.label || f.field_key })
+      if (d.stamp) {
+        if (d.stamp.org_field) labels[d.stamp.org_field] = '印章名称'
+        if (d.stamp.code_field) labels[d.stamp.code_field] = '印章文字'
+      }
+    } catch {}
+
+    const retry = async (btn) => {
+      btn.disabled = true; btn.textContent = '重试中…'
+      try {
+        await api.bingRetryOrder(orderId)
+        showToast('已重新提交生成', 'success')
+        renderBingOrderDetail(panel, orderId)
+      } catch (e) {
+        showToast(e.message, 'error')
+        btn.disabled = false; btn.textContent = '重试生成'
+      }
+    }
+
+    const info = h('div', { class: 'form-grid' }, [
+      h('div', { class: 'field' }, [h('label', null, '模板'), h('div', null, o.application_name || o.application_id)]),
+      h('div', { class: 'field' }, [h('label', null, '状态'), bingStatusBadge(o)]),
+      h('div', { class: 'field' }, [h('label', null, '扣积分'), h('div', null, fmtNum(o.price_points))]),
+      h('div', { class: 'field' }, [h('label', null, '下单时间'), h('div', null, fmtTime(o.created_at))]),
+    ])
+
+    const fieldsBox = h('div', { style: 'margin-top:14px' })
+    const entries = Object.entries(o.fields || {})
+    if (entries.length) {
+      fieldsBox.appendChild(h('div', { class: 'syy-subtitle' }, '填写内容'))
+      fieldsBox.appendChild(h('div', { class: 'agent-table-wrap' }, h('table', { class: 'agent-table' }, [
+        h('thead', null, h('tr', null, [h('th', null, '字段'), h('th', null, '内容')])),
+        h('tbody', null, entries.map(([k, v]) => h('tr', null, [h('td', null, labels[k] || k), h('td', { style: 'white-space:pre-wrap;word-break:break-word' }, v)]))),
+      ])))
+    }
+
+    const children = [info]
+    if (o.image_ready && o.image_url) {
+      children.push(h('img', {
+        src: o.image_url, alt: '病例图片',
+        style: 'max-width:100%;border-radius:12px;border:1px solid var(--border);margin-top:16px',
+        onerror: (e) => { e.target.replaceWith(h('div', { class: 'tip' }, '图片加载失败，可能仍在生成，请稍后刷新')) },
+      }))
+      children.push(h('div', { style: 'margin-top:12px;display:flex;gap:10px;flex-wrap:wrap' }, [
+        h('a', { class: 'btn btn-primary btn-sm', href: o.image_url, download: `病例-${o.order_id}.png`, target: '_blank', rel: 'noopener' }, '保存图片'),
+      ]))
+      children.push(h('div', { class: 'tip', style: 'margin-top:10px' }, '图片仅本人可见，上游云端保留 3 天，请及时保存。'))
+    } else {
+      children.push(h('div', { class: 'tip', style: 'margin-top:14px' }, o.render_error ? '图片暂未生成：' + o.render_error : (o.status === 'processing' ? '上游处理中，图片稍后生成。' : '订单已完成，图片仍在准备中。')))
+      children.push(h('div', { style: 'margin-top:10px;display:flex;gap:10px;flex-wrap:wrap' }, [
+        o.status === 'processing' ? h('button', { class: 'btn btn-sm', onclick: (e) => retry(e.currentTarget) }, '重试生成') : null,
+        h('button', { class: 'btn btn-sm', onclick: () => renderBingOrderDetail(panel, orderId) }, '刷新状态'),
+        h('a', { class: 'btn btn-sm', href: `/api/bing/orders/${encodeURIComponent(o.order_id)}/image`, target: '_blank', rel: 'noopener' }, '尝试打开图片'),
+      ]))
+    }
+    if (o.remark) children.push(h('div', { class: 'tip', style: 'margin-top:10px' }, '备注：' + o.remark))
+    children.push(fieldsBox)
+    panel.replaceChildren(h('section', null, [panelHead('病例订单详情', `订单号 ${o.order_id}`, backBtn), ...children]))
+  })()
+}
+
 function openSection(key) {
   const el = $('#home-view')
   if (key === 'platforms') {
-    // 进主流入口先彻底重置查询状态（platform/结果/选中课程/冷门商品残留），
-    // 避免把上次冷门商品平台名带进来误发到冷门商品、或默认价与冷门商品价错位
-    resetPurchase()
-    PF.scope = 'all'
-    PF._module = null
-    PF.moreItem = null
-    renderPurchaseFlow(el)
+    // 主流网课已下线，入口并入综合网课
+    renderMoreFlow(el)
   } else if (key === 'cold') {
     renderMoreFlow(el) // 综合网课：冷门平台列表页
   } else if (key === 'intern') {
     renderSxdkFlow(el) // 实习打卡（独立模块）
+  } else if (key === 'sport') {
+    renderSportFlow(el) // 我爱运动（套娃下游对接天河 syytianheban）
+  } else if (key === 'case') {
+    renderBingliFlow(el) // 病例（独立模块）
+  } else if (key === 'qd') {
+    renderQdFlow(el) // 学习通自动签到（独立模块，对接签到引擎）
   } else {
     const title = PLACEHOLDER_TITLES[key] || '服务'
     el.replaceChildren(h('div', { class: 'home-view' }, [
@@ -995,7 +2307,7 @@ function updateStep2Desc() {
 function updatePlatformNote() {
   const el = document.querySelector('#home-view .platform-note')
   if (!el) return
-  // 冷门商品：查课页直接显示所选商品的天河介绍（.platform-note 的 :before 自带 💡）
+  // 冷门商品：查课页直接显示所选商品的上游介绍（.platform-note 的 :before 自带 💡）
   if (PF.scope === 'more' && PF.moreItem && PF.moreItem.note) {
     el.textContent = PF.moreItem.note
     return
@@ -1207,7 +2519,7 @@ function renderResultArea() {
     return
   }
 
-  // 学习通课程来自天河，通常不带状态/进度，隐藏无意义的「已完成」「平均进度」统计
+  // 学习通课程来自上游，通常不带状态/进度，隐藏无意义的「已完成」「平均进度」统计
   const stats = [h('div', { class: 'stat' }, [h('div', { class: 'stat-value' }, courses.length), h('div', { class: 'stat-label' }, '课程总数')])]
   if (PF.platform !== '学习通') {
     stats.push(h('div', { class: 'stat' }, [h('div', { class: 'stat-value success' }, statusDone), h('div', { class: 'stat-label' }, '已完成')]))
@@ -1391,19 +2703,65 @@ async function handlePay() {
       remark: $('#pf-remark').value.trim(),
       courses: chosen,
       pay_method: 'points',
+      // 后端会用实时库价复核；价格在浏览期间变了会返回 409，不会按新价静默扣款
+      expected_price_fen: currentPriceFen(),
     })
     showToast(`积分支付成功！已提交 ${chosen.length} 门课程`, 'success')
+    // 清掉课程结果与轮询，防止同一批课程被再次勾选重复扣积分；
+    // 结果区改为「下单成功」终态卡片，重新查课请回步骤 2 重新提交
     PF.selected = []
+    PF.result = null
     PF.creating = false
+    cleanupPollers()
     history.replaceState(null, '', '/')
     const me = await api.agentMe().catch(() => null)
     if (me) setUserState(me)
-    refreshResult(false)
+    renderTaskArea()
+    renderResultArea()
+    renderOrderOk(chosen.length, totalPointsText(chosen.length))
   } catch (err) {
     PF.creating = false
+    // 409 = 商品价格已被后台更新：先刷新价格并重绘结算区，再提示用户确认
+    if (err.status === 409) await refreshPrices()
     showToast(err.message, 'error')
     updatePayButton()
   }
+}
+
+// 后台改价后下单会返回 409：重新拉取配置/商品价并重绘结算区。
+// 商品已下架时 moreItem 置 null，结算区会自动禁用支付按钮。
+async function refreshPrices() {
+  const [cf, items] = await Promise.all([
+    api.config().catch(() => null),
+    PF.scope === 'more' ? api.moreProducts('').catch(() => null) : Promise.resolve(null),
+  ])
+  if (cf) {
+    if (cf.course_price_fen) priceFen = cf.course_price_fen
+    if (cf.platform_prices) platformPrices = cf.platform_prices
+    if (typeof cf.bing_enabled === 'boolean') bingEnabled = cf.bing_enabled
+  }
+  if (PF.scope === 'more' && Array.isArray(items)) {
+    PF.moreItem = items.find((x) => x && x.name === PF.platform) || null
+  }
+  renderResultArea()
+}
+
+// 本次订单合计（元），用于成功卡片展示
+function totalPointsText(count) {
+  const price = currentPriceFen()
+  return price != null ? ((count * price) / 100).toFixed(2) : ''
+}
+
+// 下单成功终态卡片（.order-ok 样式已存在于 main.css）
+function renderOrderOk(count, yuanText) {
+  const area = document.querySelector('.pf-task-area')
+  if (!area) return
+  const old = document.getElementById('pf-order-ok')
+  if (old) old.remove()
+  area.appendChild(h('div', { class: 'order-ok', id: 'pf-order-ok' }, [
+    h('div', null, `✓ 下单成功：已提交 ${count} 门课程${yuanText ? `，扣 ${yuanText} 积分` : ''}`),
+    h('div', { class: 'order-ok-sub' }, '课程已进入处理队列，可到个人中心「我的订单」查询进度。如需再下新单，请回到上方步骤重新查课。'),
+  ]))
 }
 
 /* ==================== 进度环 ==================== */
@@ -1440,6 +2798,12 @@ function applyAgentView() {
   } else {
     auth.hidden = true
     dash.hidden = false
+    // 支持 /agent#bing 直接打开指定标签（病例订单分享/跳转）
+    const hashTab = (location.hash || '').replace(/^#/, '')
+    if (/^[a-z]+$/.test(hashTab) && document.querySelector(`#ag-tabs .ag-nav-item[data-tab="${hashTab}"]`)) {
+      currentAgentTab = hashTab
+      document.querySelectorAll('#ag-tabs .ag-nav-item').forEach((b) => b.classList.toggle('active', b.dataset.tab === hashTab))
+    }
     loadAgentData()
   }
 }
@@ -1479,6 +2843,11 @@ function initAgentTabs() {
     switchTab(btn.dataset.tab)
   })
   $('#ag-go-redeem').addEventListener('click', () => switchTab('redeem'))
+  window.addEventListener('hashchange', () => {
+    if (PAGE !== 'agent' || !user) return
+    const tab = (location.hash || '').replace(/^#/, '')
+    if (/^[a-z]+$/.test(tab) && document.querySelector(`#ag-tabs .ag-nav-item[data-tab="${tab}"]`)) switchTab(tab)
+  })
 }
 
 function switchTab(tab) {
@@ -1495,6 +2864,9 @@ function renderAgentTab(tab) {
   else if (tab === 'points') renderPoints(panel)
   else if (tab === 'redeem') renderRedeem(panel)
   else if (tab === 'sxdk') renderSxdkOrders(panel)
+  else if (tab === 'sport') renderSyyOrders(panel)
+  else if (tab === 'bing') renderBingOrders(panel)
+  else if (tab === 'qd') renderQdOrders(panel)
   else if (tab === 'settings') renderSettings(panel)
 }
 
@@ -1584,7 +2956,7 @@ function orderCard(o) {
   ])
 }
 
-/* —— 天河实时进度：每笔订单手动查询，结果按 order_id 缓存 —— */
+/* —— 上游实时进度：每笔订单手动查询，结果按 order_id 缓存 —— */
 
 function renderOrderProgressCell(td, o) {
   td.replaceChildren()
@@ -1598,7 +2970,7 @@ function renderOrderProgressCell(td, o) {
     return
   }
   td.appendChild(h('button', { class: 'btn progress-btn', onclick: () => fetchOrderProgress(o.order_id, td) }, st ? '↻ 刷新' : '查询进度'))
-  // 补刷：把该订单已下到天河的课程逐门触发重刷（仅已支付订单显示）
+  // 补刷：把该订单已下到上游的课程逐门触发重刷（仅已支付订单显示）
   td.appendChild(h('button', {
     class: 'btn progress-btn', style: 'margin-left:6px',
     disabled: (st && st.rebrushing) || undefined,
@@ -1616,7 +2988,7 @@ function renderOrderProgressCell(td, o) {
   items.forEach((it) => td.appendChild(orderProgressLine(it)))
 }
 
-// 解析天河进度原文（"62%" / "100%" / "无"）为 0-100 数值；解析不出返回 null（不画环）。
+// 解析上游进度原文（"62%" / "100%" / "无"）为 0-100 数值；解析不出返回 null（不画环）。
 function parseProgressPct(p) {
   if (p == null) return null
   const n = parseFloat(String(p).replace(/[%\s ]/g, ''))
@@ -1665,7 +3037,7 @@ async function fetchOrderProgress(orderId, td) {
   if (order) renderOrderProgressCell(td, order)
 }
 
-// 订单补刷：把该订单已下到天河的课程逐门触发重刷（上游 act=budan，按 yid）
+// 订单补刷：把该订单已下到上游的课程逐门触发重刷（上游 act=budan，按 yid）
 async function rebrushOrder(o, td) {
   if (!confirm(`确定补刷订单 ${o.order_id.slice(0, 8)}… 的全部课程？将重新执行，请稍候。`)) return
   if (!agentUserData.orderProgress) agentUserData.orderProgress = {}
@@ -1921,13 +3293,16 @@ function initPay() {
   const orderId = m[1].toLowerCase()
   const POLL_MAX_PAY = 150
   let total = 0
+  let interval = null
+  const stop = () => { if (interval) { clearInterval(interval); interval = null } }
 
-  const interval = setInterval(async () => {
+  // 立即查一次（多数情况下用户秒见结果），之后进入 2s 轮询
+  const check = async () => {
     total += 1
     try {
       const o = await api.getOrder(orderId)
       if (o.status === 'paid') {
-        clearInterval(interval)
+        stop()
         $('#pay-title').textContent = '支付成功'
         $('#pay-body').replaceChildren(
           h('div', { class: 'pay-amount success' }, `¥${o.amount}`),
@@ -1939,12 +3314,13 @@ function initPay() {
         $('#pay-status-text').textContent = total >= POLL_MAX_PAY
           ? '长时间未确认到支付结果。如已完成付款请稍后刷新本页；未支付可返回重新下单。'
           : '支付完成后本页会自动更新，请勿关闭…'
-        if (total >= POLL_MAX_PAY) { clearInterval(interval); $('#pay-foot').hidden = false }
+        if (total >= POLL_MAX_PAY) stop()
+        if (total >= POLL_MAX_PAY) $('#pay-foot').hidden = false
       }
     } catch (err) {
       // 401/404 终止轮询，其余网络抖动继续重试
       if (err.auth || err.status === 401 || err.status === 404) {
-        clearInterval(interval)
+        stop()
         const notFound = !!err.auth || err.status === 401
         $('#pay-title').textContent = notFound ? '请先登录' : '订单不存在'
         $('#pay-body').replaceChildren(h('p', { class: 'pay-sub' },
@@ -1955,13 +3331,15 @@ function initPay() {
         $('#pay-foot').hidden = false
       } else {
         $('#pay-status-text').textContent = total >= 5 ? '网络波动，重试中…' : '支付完成后本页会自动更新，请勿关闭…'
-        if (total >= POLL_MAX_PAY) { clearInterval(interval); $('#pay-foot').hidden = false }
+        if (total >= POLL_MAX_PAY) { stop(); $('#pay-foot').hidden = false }
       }
     }
-  }, POLL_INTERVAL)
+  }
+  check()
+  interval = setInterval(check, POLL_INTERVAL)
   // 页面卸载时清理定时器，避免后台空转
-  window.addEventListener('beforeunload', () => clearInterval(interval))
-  window.addEventListener('pagehide', () => clearInterval(interval))
+  window.addEventListener('beforeunload', stop)
+  window.addEventListener('pagehide', stop)
 }
 
 /* ==================== 启动 ==================== */
@@ -1989,6 +3367,8 @@ async function boot() {
       morePlatforms = Array.isArray(mps) ? mps.map((p) => (typeof p === 'string' ? { name: p } : p)) : []
       if (cf.course_price_fen) priceFen = cf.course_price_fen
       if (cf.platform_prices) platformPrices = cf.platform_prices
+    if (typeof cf.bing_enabled === 'boolean') bingEnabled = cf.bing_enabled
+    if (typeof cf.qd_enabled === 'boolean') qdEnabled = cf.qd_enabled
       const heroQueries = $('#hero-queries')
       if (heroQueries) heroQueries.textContent = platforms.length ? '1,200+' : '1,000+'
       // 若大厅已渲染但平台列表刚就绪，补一次刷新以更新卡片与单价

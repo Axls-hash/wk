@@ -367,8 +367,7 @@ function showHomeGrid() {
   const el = $('#home-view')
   homeGridActive = true
   const sections = [
-    ['platforms', '主流网课', `主流网课学习进度查询，覆盖 ${platforms.length} 个平台：学习通、智慧树、welearn 等`],
-    ['cold', '综合网课', `小众平台课程进度，${morePlatforms.length ? '已支持 ' + morePlatforms.map((p) => p.name).join('、') : '待开发'}`],
+    ['cold', '综合网课', morePlatforms.length ? `已上架 ${morePlatforms.map((p) => p.name).join('、')}` : '选平台项目，填账号查课下单'],
     ['intern', '实习打卡', '选平台填打卡安排，按天扣积分下单'],
     ['sport', '我爱运动', '运动项目代刷，按数量扣积分，拿链接去平台完成'],
   ]
@@ -2061,13 +2060,8 @@ function renderBingOrderDetail(panel, orderId) {
 function openSection(key) {
   const el = $('#home-view')
   if (key === 'platforms') {
-    // 进主流入口先彻底重置查询状态（platform/结果/选中课程/冷门商品残留），
-    // 避免把上次冷门商品平台名带进来误发到冷门商品、或默认价与冷门商品价错位
-    resetPurchase()
-    PF.scope = 'all'
-    PF._module = null
-    PF.moreItem = null
-    renderPurchaseFlow(el)
+    // 主流网课已下线，入口并入综合网课
+    renderMoreFlow(el)
   } else if (key === 'cold') {
     renderMoreFlow(el) // 综合网课：冷门平台列表页
   } else if (key === 'intern') {

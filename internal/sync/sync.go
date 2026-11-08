@@ -162,44 +162,66 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 	// 并在此完成过滤：目标分类 + 有效字段 + 价格>0（0 价商品不上架，等上游修复后自动恢复）。
 	// 计数以「真实落库成功」为准——旧版按上游行数计数，8 份重复目录会把
 	// inserted/updated 虚报 8 倍（657 行商品报成 5256）。
-	uniq := make([]fetchers.CatalogRow, 0, len(rows))
-	seen := map[int64]bool{}
-	for _, row := range rows {
-		if len(want) > 0 && !want[row.Fenlei] {
-			continue
+	filterRows := func(useCat bool) []fetchers.CatalogRow {
+		out := make([]fetchers.CatalogRow, 0, len(rows))
+		seenLocal := map[int64]bool{}
+		for _, row := range rows {
+			if useCat && len(want) > 0 && !want[row.Fenlei] {
+				continue
+			}
+			if row.Cid == 0 || row.Name == "" {
+				continue
+			}
+			if row.Price <= 0 {
+				continue
+			}
+			if excludedCatalogRow(row) {
+				continue
+			}
+			if seenLocal[row.Cid] {
+				continue
+			}
+			seenLocal[row.Cid] = true
+			out = append(out, row)
 		}
-		if row.Cid == 0 || row.Name == "" {
-			continue
-		}
-		if row.Price <= 0 {
-			continue
-		}
-		if excludedCatalogRow(row) {
-			continue
-		}
-		if seen[row.Cid] {
-			continue
-		}
-		seen[row.Cid] = true
-		uniq = append(uniq, row)
+		return out
+	}
+	uniq := filterRows(true)
+	// 配置的分类 ID 与上游（丸子/天河）不一致时，按分类过滤会得到 0 条。
+	// 此时回退同步全部分类，避免「上游有货但后台一个都没有」。
+	if len(uniq) == 0 && len(rows) > 0 && len(want) > 0 {
+		logger.Warnf("sync: SyncCategories=%v matched 0/%d upstream rows; falling back to all categories",
+			config.SyncCategories, len(rows))
+		uniq = filterRows(false)
 	}
 
 	syncedCids := map[int64]bool{}
 	productMap := map[string]fetchers.CatalogEntry{}
+
+	// SQLite 不支持 ON DUPLICATE KEY / VALUES()，必须分支写；线上 ALLOW_SQLITE=1 时
+	// 若仍用 MySQL 语法，8144 条会全部 upsert 失败 → inserted=0（用户看到「一个都拉不到」）。
+	upsertSQL := `INSERT INTO more_products(cid, fenlei, name, price_yuan, base_yuan, price_override, content, status, updated_at)
+		 VALUES(?,?,?,?,?,0,?,1,?)`
+	if store.IsMySQL() {
+		upsertSQL += ` ON DUPLICATE KEY UPDATE fenlei=VALUES(fenlei), name=VALUES(name),
+			   base_yuan=VALUES(base_yuan),
+			   price_yuan=CASE WHEN price_override=1 THEN price_yuan ELSE VALUES(price_yuan) END,
+			   content=VALUES(content), status=1,
+			   updated_at=VALUES(updated_at)`
+	} else {
+		upsertSQL += ` ON CONFLICT(cid) DO UPDATE SET fenlei=excluded.fenlei, name=excluded.name,
+			   base_yuan=excluded.base_yuan,
+			   price_yuan=CASE WHEN more_products.price_override=1 THEN more_products.price_yuan ELSE excluded.price_yuan END,
+			   content=excluded.content, status=1,
+			   updated_at=excluded.updated_at`
+	}
 
 	for _, row := range uniq {
 		price := row.Price * config.SyncPriceMult
 		// base_yuan=进货价（天河价×倍率，始终随同步刷新）；price_yuan=当售售价。
 		// 管理员在后台手动改价后 price_override=1，同步不得覆盖 price_yuan（否则改价失去意义），
 		// 只更新 base_yuan，便于后台随时「恢复天河默认价」。
-		_, uerr := store.DB.Exec(
-			`INSERT INTO more_products(cid, fenlei, name, price_yuan, base_yuan, price_override, content, status, updated_at)
-			 VALUES(?,?,?,?,?,0,?,1,?)
-			 ON DUPLICATE KEY UPDATE fenlei=VALUES(fenlei), name=VALUES(name),
-			   base_yuan=VALUES(base_yuan),
-			   price_yuan=CASE WHEN price_override=1 THEN price_yuan ELSE VALUES(price_yuan) END,
-			   content=VALUES(content), status=1,
-			   updated_at=VALUES(updated_at)`,
+		_, uerr := store.DB.Exec(upsertSQL,
 			row.Cid, fenleiInt(row.Fenlei), truncate(row.Name, 200), price, price,
 			truncate(row.Content, 4000), now)
 		if uerr != nil {

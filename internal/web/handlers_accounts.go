@@ -43,6 +43,7 @@ func HandlePlatforms(w http.ResponseWriter, r *http.Request) {
 //（如「龙龙项目」「嫩妞项目」），其次静态目录旧名，最后才回退「分类N」。
 func HandleMorePlatforms(w http.ResponseWriter, r *http.Request) {
 	nameByCat := appsync.LoadFenleiNames()
+	hidden := appsync.LoadHiddenFenlei()
 	order := make([]string, 0, len(fetchers.MorePlatforms))
 	seenOrder := map[string]bool{}
 	for _, e := range fetchers.MorePlatforms {
@@ -77,6 +78,9 @@ func HandleMorePlatforms(w http.ResponseWriter, r *http.Request) {
 		var n int64
 		if rows.Scan(&fenlei, &n) != nil || fenlei == "" || n <= 0 {
 			continue
+		}
+		if hidden[fenlei] {
+			continue // 管理员已删除的分类不进前台
 		}
 		have[fenlei] = n
 		if !seenOrder[fenlei] {

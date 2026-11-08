@@ -37,6 +37,10 @@ const AUDIT_ACTIONS = {
   'syy.price.reset': '恢复运动默认价',
   'more.price.set': '设置商品售价',
   'more.price.reset': '恢复商品默认价',
+  'more.fenlei.hide': '删除货源分类',
+  'more.fenlei.show': '恢复货源分类',
+  'more.status.on': '上架商品',
+  'more.status.off': '下架商品',
   'bing.price.set': '设置病例售价',
   'bing.price.reset': '恢复病例默认价',
   'bing.enable': '开启病例功能',
@@ -313,11 +317,93 @@ function renderPrices(panel) {
 
 /* ==================== 综合网课售价 ==================== */
 
-// 综合网课（more_products）货源商品改价：进价=上游价×倍率（同步刷新），
-// 售价=最终展示/扣款价。改价只影响本系统结算，下单提交给上游的参数不变。
+// 综合网课（more_products）：上方管「哪些分类上前台」，下方改价/单品上下架。
 function renderMorePrices(panel) {
-  const state = { q: '', fenlei: '', page: 1, data: null, modules: [] }
+  const state = { q: '', fenlei: '', page: 1, data: null, modules: [], cats: [] }
   const body = h('tbody')
+  const catBody = h('tbody')
+
+  const fenleiName = (f) => {
+    const c = state.cats.find((x) => String(x.fenlei) === String(f))
+    if (c && c.name) return c.name
+    const m = state.modules.find((x) => String(x.category) === String(f))
+    return m ? m.name : `分类 ${f}`
+  }
+  const yuan = (v) => (v > 0 ? `¥${Number(v).toFixed(2)}` : '—')
+
+  const fenleiSel = h('select', { onchange: (e) => { state.fenlei = e.target.value; state.page = 1; load() } }, [h('option', { value: '' }, '全部货源')])
+
+  function refillFenleiSel() {
+    const cur = state.fenlei
+    fenleiSel.replaceChildren(h('option', { value: '' }, '全部货源'))
+    const seen = {}
+    state.cats.forEach((c) => {
+      const id = String(c.fenlei || '')
+      if (!id || seen[id]) return
+      seen[id] = true
+      const label = `${c.name || ('分类' + id)}${c.hidden ? '（已删）' : ''}`
+      fenleiSel.appendChild(h('option', { value: id }, label))
+    })
+    fenleiSel.value = cur
+  }
+
+  async function loadCats() {
+    try {
+      const data = await adminApi.moreFenlei()
+      state.cats = Array.isArray(data.items) ? data.items : []
+      refillFenleiSel()
+      drawCats()
+    } catch (e) { notify(e.message, true) }
+  }
+
+  function drawCats() {
+    if (!state.cats.length) {
+      catBody.replaceChildren(h('tr', null, h('td', { colSpan: 6 }, h('div', { class: 'empty' }, '暂无分类：先在看板点「同步综合网课」'))))
+      return
+    }
+    catBody.replaceChildren(...state.cats.map((c) => {
+      const priceRange = (c.min_price > 0 || c.max_price > 0)
+        ? (Math.abs(c.min_price - c.max_price) < 0.001 ? yuan(c.min_price) : `${yuan(c.min_price)} ~ ${yuan(c.max_price)}`)
+        : '—'
+      const badge = c.hidden
+        ? h('span', { class: 'badge badge-gray' }, '已删除')
+        : (c.on_sale > 0
+          ? h('span', { class: 'badge badge-done' }, '前台展示中')
+          : h('span', { class: 'badge badge-progress' }, '无上架商品'))
+      const action = c.hidden
+        ? h('button', { class: 'btn btn-sm btn-primary', onclick: () => showCat(c) }, '恢复上架')
+        : h('button', { class: 'btn btn-sm btn-danger', onclick: () => hideCat(c) }, '删除')
+      return h('tr', null, [
+        h('td', { style: 'font-weight:700' }, c.name || ('分类' + c.fenlei)),
+        h('td', { class: 'mono' }, c.fenlei),
+        h('td', { class: 'mono' }, String(c.on_sale || 0) + ' / ' + String(c.total || 0)),
+        h('td', { class: 'mono' }, priceRange),
+        h('td', null, badge),
+        h('td', null, [
+          h('button', { class: 'btn btn-sm', onclick: () => { state.fenlei = String(c.fenlei); fenleiSel.value = state.fenlei; state.page = 1; load() } }, '看商品'),
+          ' ', action,
+        ]),
+      ])
+    }))
+  }
+
+  async function hideCat(c) {
+    if (!confirm(`删除「${c.name}」？前台不再显示该平台，其下商品全部下架；同步也不会再自动上架。`)) return
+    try {
+      await adminApi.hideMoreFenlei(c.fenlei)
+      notify(`已删除「${c.name}」`)
+      await Promise.all([loadCats(), load()])
+    } catch (e) { notify(e.message, true) }
+  }
+
+  async function showCat(c) {
+    if (!confirm(`恢复「${c.name}」？有售价的商品会重新上架到前台。`)) return
+    try {
+      await adminApi.showMoreFenlei(c.fenlei)
+      notify(`已恢复「${c.name}」`)
+      await Promise.all([loadCats(), load()])
+    } catch (e) { notify(e.message, true) }
+  }
 
   const load = async () => {
     try {
@@ -326,39 +412,33 @@ function renderMorePrices(panel) {
     } catch (e) { notify(e.message, true) }
   }
 
-  // 模块下拉：从公开 /api/more-platforms 拿 name→category
-  const fenleiSel = h('select', { onchange: (e) => { state.fenlei = e.target.value; state.page = 1; load() } }, [h('option', { value: '' }, '全部货源')])
-  api.morePlatforms().then((mods) => {
-    state.modules = Array.isArray(mods) ? mods : []
-    state.modules.forEach((m) => fenleiSel.appendChild(h('option', { value: String(m.category || '') }, m.name || String(m.category))))
-  }).catch(() => {})
-
-  const fenleiName = (f) => {
-    const m = state.modules.find((x) => String(x.category) === String(f))
-    return m ? m.name : `分类 ${f}`
-  }
-  const yuan = (v) => (v > 0 ? `¥${v.toFixed(2)}` : '—')
-
   function draw() {
     if (!state.data) return
     body.replaceChildren(...state.data.items.map((it) => {
       const draft = h('input', { class: 'input', type: 'number', step: '0.01', min: '0', value: it.price_yuan > 0 ? String(it.price_yuan) : '', placeholder: it.base_yuan > 0 ? it.base_yuan.toFixed(2) : '0.00', style: 'width:92px;padding:5px 8px' })
-      const badge = it.price_override
+      const priceBadge = it.price_override
         ? h('span', { class: 'badge badge-progress' }, '自定义')
         : h('span', { class: 'badge badge-gray' }, '上游价')
       const resetBtn = it.price_override ? h('button', { class: 'btn btn-sm', title: '恢复上游默认价', onclick: () => resetPrice(it) }, '恢复默认') : null
+      const onSale = it.status === 1
+      const statusBadge = onSale
+        ? h('span', { class: 'badge badge-done' }, '已上架')
+        : h('span', { class: 'badge badge-gray' }, '已下架')
+      const shelfBtn = h('button', {
+        class: `btn btn-sm ${onSale ? 'btn-danger' : 'btn-primary'}`,
+        onclick: () => toggleStatus(it),
+      }, onSale ? '下架' : '上架')
       return h('tr', null, [
         h('td', { class: 'mono' }, it.cid),
-        h('td', { class: 'wrap', style: 'max-width:260px' }, it.name),
+        h('td', { class: 'wrap', style: 'max-width:240px' }, it.name),
         h('td', null, fenleiName(it.fenlei)),
         h('td', { class: 'mono' }, yuan(it.base_yuan)),
         h('td', { class: 'mono' }, yuan(it.price_yuan)),
-        h('td', null, [draft, ' ', h('button', { class: 'btn btn-sm btn-primary', onclick: () => save(it, draft) }, '保存')]),
-        h('td', null, [badge, resetBtn ? ' ' : null, resetBtn]),
+        h('td', null, [draft, ' ', h('button', { class: 'btn btn-sm btn-primary', onclick: () => save(it, draft) }, '保存'), ' ', resetBtn]),
+        h('td', null, [statusBadge, ' ', priceBadge, ' ', shelfBtn]),
       ])
     }))
     if (state.data.items.length === 0) body.replaceChildren(h('tr', null, h('td', { colSpan: 7 }, h('div', { class: 'empty' }, '没有匹配的商品'))))
-    // 数据加载完后再填充分页与计数（不要在渲染时用未加载的 total=0 建分页，否则「下一页」被禁用）
     const _pg = panel.querySelector('.pager'); if (_pg) _pg.replaceWith(pagerEl(state.page, (p) => { state.page = p; load() }, state.data.total, 20))
     const _ct = panel.querySelector('[data-count]'); if (_ct) _ct.textContent = `共 ${state.data.total} 项`
   }
@@ -370,7 +450,7 @@ function renderMorePrices(panel) {
     try {
       await adminApi.setMorePrice(it.cid, v)
       notify(`已更新「${it.name}」售价 ¥${v.toFixed(2)}`)
-      await load()
+      await Promise.all([load(), loadCats()])
     } catch (e) { notify(e.message, true) }
   }
 
@@ -379,7 +459,18 @@ function renderMorePrices(panel) {
     try {
       await adminApi.setMorePrice(it.cid, 0)
       notify(`「${it.name}」已恢复上游默认价`)
-      await load()
+      await Promise.all([load(), loadCats()])
+    } catch (e) { notify(e.message, true) }
+  }
+
+  async function toggleStatus(it) {
+    const next = it.status === 1 ? 0 : 1
+    const tip = next === 1 ? `上架「${it.name}」到前台？` : `下架「${it.name}」？前台将不再展示。`
+    if (!confirm(tip)) return
+    try {
+      await adminApi.setMoreStatus(it.cid, next)
+      notify(next === 1 ? `已上架「${it.name}」` : `已下架「${it.name}」`)
+      await Promise.all([load(), loadCats()])
     } catch (e) { notify(e.message, true) }
   }
 
@@ -387,15 +478,26 @@ function renderMorePrices(panel) {
   qInput.addEventListener('input', debounce(() => { state.q = qInput.value; state.page = 1; load() }, 300))
 
   panel.appendChild(h('div', { class: 'card' }, [
-    h('h2', null, '综合网课售价'),
-    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '设置后立即生效：前台展示与积分扣款按此「售价」计算；改价不影响提交给上游的订单，上游按它自己的账单扣款。同步任务只刷新「进价」，「自定义」售价不会被覆盖；点「恢复默认」可回到上游价。'),
+    h('h2', null, '货源分类（前台平台）'),
+    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '同步后会出现上游分类名（如龙龙项目）。不想卖的点「删除」——前台卡片消失、商品下架，再次同步也不会自动回来；要卖再点「恢复上架」。'),
+    h('div', { class: 'table-wrap' }, h('table', null, [
+      h('thead', null, h('tr', null, ['分类名', 'ID', '上架/总数', '售价区间', '前台', '操作'].map((x) => h('th', null, x)))),
+      catBody,
+    ])),
+  ]))
+
+  panel.appendChild(h('div', { class: 'card' }, [
+    h('h2', null, '商品售价与上下架'),
+    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '售价决定前台展示和积分扣款；「上架」后用户才能下单。改价不影响提交给上游的订单。同步只刷新进价，自定义售价不会被盖掉。'),
     h('div', { class: 'toolbar' }, [qInput, fenleiSel, h('span', { class: 'tip', dataset: { count: '' } }, '')]),
     h('div', { class: 'table-wrap' }, h('table', null, [
-      h('thead', null, h('tr', null, ['ID', '商品', '货源', '进价', '售价', '改价', '状态'].map((x) => h('th', null, x)))),
+      h('thead', null, h('tr', null, ['ID', '商品', '货源', '进价', '售价', '改价', '上下架'].map((x) => h('th', null, x)))),
       body,
     ])),
     h('div', { class: 'pager' }),
   ]))
+
+  loadCats()
   load()
 }
 
@@ -1134,29 +1236,13 @@ function renderSyscfg(panel) {
       h('option', { value: 'alipay', selected: data.epay_type === 'alipay' || undefined }, '支付宝 alipay'),
       h('option', { value: 'qqpay', selected: data.epay_type === 'qqpay' || undefined }, 'QQ钱包 qqpay'),
     ])
-    const skyURL = textInput('skyriver_url', data.skyriver_url, { placeholder: 'https://丸子接口根地址（不要带 /api.php）' })
-    const skyUID = textInput('skyriver_uid', data.skyriver_uid, { placeholder: 'UID' })
+    const skyURL = textInput('skyriver_url', data.skyriver_url, { placeholder: 'https://天河域名（不要带 /api.php）' })
+    const skyUID = textInput('skyriver_uid', data.skyriver_uid, { placeholder: '对接 uid' })
     const skyKey = textInput('skyriver_key', '', {
       type: 'password',
-      placeholder: data.skyriver_key_set ? '已配置，留空则不修改' : 'API Key',
+      placeholder: data.skyriver_key_set ? '已配置，留空则不修改' : '对接 key',
     })
     const coursePrice = textInput('course_price', data.course_price, { placeholder: '3.00' })
-    const balTip = h('span', { class: 'tip', style: 'margin:0' }, data.skyriver_ok ? '保存后可点右侧查询余额' : '未对接')
-    const balBtn = h('button', { class: 'btn btn-sm', type: 'button', disabled: !data.skyriver_ok || undefined }, '查询丸子余额')
-    balBtn.onclick = async () => {
-      balBtn.disabled = true
-      balTip.textContent = '查询中…'
-      try {
-        const r = await adminApi.wanziBalance()
-        balTip.textContent = `上游余额：¥${r.balance}`
-        notify(`丸子余额 ${r.balance} 元`)
-      } catch (e) {
-        balTip.textContent = '查询失败'
-        notify(e.message, true)
-      } finally {
-        balBtn.disabled = !data.skyriver_ok
-      }
-    }
     const sxdkURL = textInput('sxdk_upstream_url', data.sxdk_upstream_url, { placeholder: 'https://上级/sxdk/upstream.php' })
     const sxdkAdmin = textInput('sxdk_admin', data.sxdk_admin, { placeholder: '对接 uid' })
     const sxdkToken = textInput('sxdk_token', '', {
@@ -1164,6 +1250,11 @@ function renderSyscfg(panel) {
       placeholder: data.sxdk_token_set ? '已配置，留空则不修改' : '对接 token/key',
     })
     const sxdkPrice = textInput('sxdk_price_yuan', data.sxdk_price_yuan || '1', { placeholder: '1' })
+    const regOpen = h('select', { class: 'input', name: 'register_open', style: 'width:100%' }, [
+      h('option', { value: '1', selected: data.register_open ? true : undefined }, '开放注册'),
+      h('option', { value: '0', selected: !data.register_open ? true : undefined }, '关闭注册'),
+    ])
+    const regCode = textInput('register_code', data.register_code || '', { placeholder: '用户注册时填写的邀请码' })
 
     const saveBtn = h('button', { class: 'btn', type: 'button' }, '保存配置')
     saveBtn.onclick = async () => {
@@ -1184,6 +1275,8 @@ function renderSyscfg(panel) {
           sxdk_admin: sxdkAdmin.value.trim(),
           sxdk_token: sxdkToken.value,
           sxdk_price_yuan: sxdkPrice.value.trim(),
+          register_open: regOpen.value === '1',
+          register_code: regCode.value.trim(),
         }
         const next = await adminApi.saveSyscfg(body)
         notify('已保存，立即生效（无需重启）')
@@ -1199,6 +1292,19 @@ function renderSyscfg(panel) {
     }
 
     panel.replaceChildren(h('div', null, [
+      h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+        h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
+          h('h2', { style: 'font-size:16px;margin:0' }, '用户注册 / 邀请码'),
+          h('span', { class: 'badge ' + (data.register_open ? 'badge-done' : 'badge-banned') },
+            data.register_open ? '注册开放中' : '注册已关闭'),
+        ]),
+        h('div', { class: 'tip', style: 'margin-bottom:12px' },
+          '关闭后前台无法注册新账号（已有用户仍可登录）。开放时必须设置邀请码，用户注册时填写一致才能通过。'),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+          field('注册开关', regOpen),
+          field('邀请码', regCode, '发给用户的注册口令；改完立刻生效'),
+        ]),
+      ]),
       h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
         h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
           h('h2', { style: 'font-size:16px;margin:0' }, '易支付（在线充值/付款）'),
@@ -1219,20 +1325,19 @@ function renderSyscfg(panel) {
       ]),
       h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
         h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
-          h('h2', { style: 'font-size:16px;margin:0' }, '丸子对接'),
+          h('h2', { style: 'font-size:16px;margin:0' }, '天河课程 API 对接'),
           h('span', { class: 'badge ' + (data.skyriver_ok ? 'badge-done' : 'badge-banned') },
             data.skyriver_ok ? '已对接' : '未对接'),
         ]),
         h('div', { class: 'tip', style: 'margin-bottom:12px' },
-          '按丸子网课 API（/api.php?act=get/add/getclass/money…，uid+key）。地址只填根域名，不要带 /api.php。密钥留空表示不改。'),
+          '查课/下单走天河 api.php。地址只填根域名，不要带 /api.php。密钥留空表示不改。'),
         h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
-          field('接口地址', skyURL),
-          field('UID', skyUID),
-          field('API Key', skyKey),
+          field('对接地址 SKYRIVER_URL', skyURL),
+          field('对接 UID', skyUID),
+          field('对接 KEY', skyKey),
         ]),
-        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;align-items:flex-end' }, [
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
           field('默认课程单价（元/门）', coursePrice, '未单独改价的平台走这个默认价'),
-          h('div', { style: 'display:flex;align-items:center;gap:10px;padding-bottom:2px' }, [balBtn, balTip]),
         ]),
       ]),
       h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [

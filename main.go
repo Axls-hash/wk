@@ -184,6 +184,10 @@ func run() {
 	mux.HandleFunc("POST /api/admin/syy-projects/{id}/price", web.HandleAdminSetSyyPrice)
 	mux.HandleFunc("GET /api/admin/more-products", web.HandleAdminMoreProducts)
 	mux.HandleFunc("POST /api/admin/more-products/{cid}/price", web.HandleAdminSetMoreProductPrice)
+	mux.HandleFunc("POST /api/admin/more-products/{cid}/status", web.HandleAdminSetMoreProductStatus)
+	mux.HandleFunc("GET /api/admin/more-fenlei", web.HandleAdminMoreFenlei)
+	mux.HandleFunc("POST /api/admin/more-fenlei/{fenlei}/hide", web.HandleAdminHideMoreFenlei)
+	mux.HandleFunc("POST /api/admin/more-fenlei/{fenlei}/show", web.HandleAdminShowMoreFenlei)
 	// 病例：管理端运行开关 + 按模板定价（不影响其他业务模块）
 	mux.HandleFunc("GET /api/admin/bing/settings", web.HandleAdminBingSettings)
 	mux.HandleFunc("POST /api/admin/bing/settings", web.HandleAdminBingSetEnabled)
@@ -205,7 +209,6 @@ func run() {
 	mux.HandleFunc("POST /api/more/sync", web.HandleMoreSync)
 	mux.HandleFunc("GET /api/admin/syscfg", web.HandleAdminSyscfg)
 	mux.HandleFunc("POST /api/admin/syscfg", web.HandleAdminSyscfgSave)
-	mux.HandleFunc("GET /api/admin/syscfg/wanzi-balance", web.HandleAdminWanziBalance)
 
 	// ---- 前端静态页 + 页面分发（static/ 为可编辑源文件）----
 	// 与 daili-go 不同：不再 embed，直接读磁盘；页面按路径分发，

@@ -33,6 +33,11 @@ var (
 	SkyriverURL               string
 	SkyriverUID               string
 	SkyriverKey               string
+	// 丸子网课：与天河同协议（/api.php?act=get|add|getclass…），可并存，由 CourseUpstream 决定查课/下单走哪边。
+	WanziURL  string
+	WanziUID  string
+	WanziKey  string
+	CourseUpstream string // "skyriver" | "wanzi"
 	SkyriverPlatformZHS       string
 	SkyriverPlatformZJY       string
 	SkyriverPlatformYXY       string
@@ -160,6 +165,13 @@ func Load(root string) {
 	SkyriverURL = strings.TrimRight(getenv("SKYRIVER_URL", ""), "/")
 	SkyriverUID = getenv("SKYRIVER_UID", "")
 	SkyriverKey = getenv("SKYRIVER_KEY", "")
+	WanziURL = strings.TrimRight(getenv("WANZI_URL", getenv("WK_URL", "")), "/")
+	WanziUID = getenv("WANZI_UID", getenv("WK_UID", ""))
+	WanziKey = getenv("WANZI_KEY", getenv("WK_KEY", ""))
+	CourseUpstream = strings.ToLower(strings.TrimSpace(getenv("COURSE_UPSTREAM", "skyriver")))
+	if CourseUpstream != "wanzi" {
+		CourseUpstream = "skyriver"
+	}
 	SkyriverPlatformZHS = getenv("SKYRIVER_PLATFORM_ZHS", "")
 	SkyriverPlatformZJY = getenv("SKYRIVER_PLATFORM_ZJY", "")
 	SkyriverPlatformYXY = getenv("SKYRIVER_PLATFORM_YXY", "")

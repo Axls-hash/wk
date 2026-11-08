@@ -7,6 +7,9 @@
 package productcache
 
 import (
+	"encoding/json"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +36,11 @@ func Items(fenlei string) ([]map[string]interface{}, error) {
 	if e, ok := entries[fenlei]; ok && time.Since(e.at) < ttl {
 		return e.items, nil
 	}
+	hidden := loadHiddenFenlei()
+	if fenlei != "" && hidden[fenlei] {
+		entries[fenlei] = entry{items: []map[string]interface{}{}, at: time.Now()}
+		return []map[string]interface{}{}, nil
+	}
 	where := " WHERE status=1 AND price_yuan>0"
 	var args []interface{}
 	if fenlei != "" {
@@ -52,6 +60,9 @@ func Items(fenlei string) ([]map[string]interface{}, error) {
 		var fl int64
 		var note string
 		if rows.Scan(&name, &yuan, &fl, &note) == nil && name != "" {
+			if fenlei == "" && hidden[strconv.FormatInt(fl, 10)] {
+				continue
+			}
 			items = append(items, map[string]interface{}{
 				"name":      name,
 				"price_fen": int64(yuan*100 + 0.5),
@@ -69,4 +80,29 @@ func Invalidate() {
 	mu.Lock()
 	entries = map[string]entry{}
 	mu.Unlock()
+}
+
+// loadHiddenFenlei 与 sync.LoadHiddenFenlei 同源（system_settings.more_fenlei_hidden），
+// 本地读一份避免 productcache↔sync 循环依赖。
+func loadHiddenFenlei() map[string]bool {
+	out := map[string]bool{}
+	if store.DB == nil {
+		return out
+	}
+	var raw string
+	err := store.DB.QueryRow(`SELECT value FROM system_settings WHERE name=?`, "more_fenlei_hidden").Scan(&raw)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return out
+	}
+	var list []string
+	if json.Unmarshal([]byte(raw), &list) != nil {
+		return out
+	}
+	for _, id := range list {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			out[id] = true
+		}
+	}
+	return out
 }

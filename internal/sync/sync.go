@@ -20,7 +20,10 @@ import (
 	"daili-go/internal/store"
 )
 
-const settingFenleiNames = "more_fenlei_names"
+const (
+	settingFenleiNames  = "more_fenlei_names"
+	settingFenleiHidden = "more_fenlei_hidden" // JSON 数组：前台不展示、同步也不自动上架的分类 ID
+)
 
 // Result 一次同步的结果统计（供管理后台手动触发展示）。
 type Result struct {
@@ -217,30 +220,36 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 
 	// SQLite 不支持 ON DUPLICATE KEY / VALUES()，必须分支写；线上 ALLOW_SQLITE=1 时
 	// 若仍用 MySQL 语法，8144 条会全部 upsert 失败 → inserted=0（用户看到「一个都拉不到」）。
+	hidden := LoadHiddenFenlei()
 	upsertSQL := `INSERT INTO more_products(cid, fenlei, name, price_yuan, base_yuan, price_override, content, status, updated_at)
-		 VALUES(?,?,?,?,?,0,?,1,?)`
+		 VALUES(?,?,?,?,?,0,?,?,?)`
 	if store.IsMySQL() {
 		upsertSQL += ` ON DUPLICATE KEY UPDATE fenlei=VALUES(fenlei), name=VALUES(name),
 			   base_yuan=VALUES(base_yuan),
 			   price_yuan=CASE WHEN price_override=1 THEN price_yuan ELSE VALUES(price_yuan) END,
-			   content=VALUES(content), status=1,
+			   content=VALUES(content), status=VALUES(status),
 			   updated_at=VALUES(updated_at)`
 	} else {
 		upsertSQL += ` ON CONFLICT(cid) DO UPDATE SET fenlei=excluded.fenlei, name=excluded.name,
 			   base_yuan=excluded.base_yuan,
 			   price_yuan=CASE WHEN more_products.price_override=1 THEN more_products.price_yuan ELSE excluded.price_yuan END,
-			   content=excluded.content, status=1,
+			   content=excluded.content, status=excluded.status,
 			   updated_at=excluded.updated_at`
 	}
 
 	for _, row := range uniq {
 		price := row.Price * config.SyncPriceMult
+		// 管理员删掉的分类：同步仍入库/刷新进价，但保持下架，避免前台又冒出来。
+		st := 1
+		if hidden[row.Fenlei] {
+			st = 0
+		}
 		// base_yuan=进货价（天河价×倍率，始终随同步刷新）；price_yuan=当售售价。
 		// 管理员在后台手动改价后 price_override=1，同步不得覆盖 price_yuan（否则改价失去意义），
 		// 只更新 base_yuan，便于后台随时「恢复天河默认价」。
 		_, uerr := store.DB.Exec(upsertSQL,
 			row.Cid, fenleiInt(row.Fenlei), truncate(row.Name, 200), price, price,
-			truncate(row.Content, 4000), now)
+			truncate(row.Content, 4000), st, now)
 		if uerr != nil {
 			logger.Err(uerr, "sync: upsert failed", "cid", row.Cid, "name", row.Name)
 			continue // 落库失败不进 syncedCids：若持续失败，下轮会被视为上游已撤而下架
@@ -251,12 +260,14 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 		} else {
 			inserted++
 		}
-		// 商品名冲突时保留首次出现（同名但 cid 不同，用前面那个）
-		if _, dup := productMap[row.Name]; !dup {
-			productMap[row.Name] = fetchers.CatalogEntry{
-				Name:     row.Name,
-				Noun:     strconv.FormatInt(row.Cid, 10),
-				Category: row.Fenlei,
+		// 商品名冲突时保留首次出现（同名但 cid 不同，用前面那个）；隐藏分类不进查课目录
+		if st == 1 {
+			if _, dup := productMap[row.Name]; !dup {
+				productMap[row.Name] = fetchers.CatalogEntry{
+					Name:     row.Name,
+					Noun:     strconv.FormatInt(row.Cid, 10),
+					Category: row.Fenlei,
+				}
 			}
 		}
 	}
@@ -324,6 +335,197 @@ func LoadFenleiNames() map[string]string {
 		out = map[string]string{}
 	}
 	return out
+}
+
+// LoadHiddenFenlei 返回管理员删除/隐藏的分类 ID 集合。
+func LoadHiddenFenlei() map[string]bool {
+	out := map[string]bool{}
+	if store.DB == nil {
+		return out
+	}
+	var raw string
+	err := store.DB.QueryRow(`SELECT value FROM system_settings WHERE name=?`, settingFenleiHidden).Scan(&raw)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return out
+	}
+	var list []string
+	if json.Unmarshal([]byte(raw), &list) != nil {
+		return out
+	}
+	for _, id := range list {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			out[id] = true
+		}
+	}
+	return out
+}
+
+func saveHiddenFenlei(hidden map[string]bool) error {
+	list := make([]string, 0, len(hidden))
+	for id, on := range hidden {
+		if on && strings.TrimSpace(id) != "" {
+			list = append(list, strings.TrimSpace(id))
+		}
+	}
+	raw, err := json.Marshal(list)
+	if err != nil {
+		return err
+	}
+	now := float64(time.Now().UnixNano()) / 1e9
+	q := `INSERT INTO system_settings(name, value, updated_at) VALUES(?,?,?)`
+	if store.IsMySQL() {
+		q += ` ON DUPLICATE KEY UPDATE value=VALUES(value), updated_at=VALUES(updated_at)`
+	} else {
+		q += ` ON CONFLICT(name) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+	}
+	_, err = store.DB.Exec(q, settingFenleiHidden, string(raw), now)
+	return err
+}
+
+// FenleiStat 后台「货源分类」一行。
+type FenleiStat struct {
+	Fenlei   string `json:"fenlei"`
+	Name     string `json:"name"`
+	Total    int64  `json:"total"`
+	OnSale   int64  `json:"on_sale"`
+	Hidden   bool   `json:"hidden"`
+	MinPrice float64 `json:"min_price"`
+	MaxPrice float64 `json:"max_price"`
+}
+
+// ListFenleiStats 汇总库里各分类商品数/上架数/价区间，供后台删分类与上架。
+func ListFenleiStats() ([]FenleiStat, error) {
+	if store.DB == nil {
+		return nil, fmt.Errorf("db not ready")
+	}
+	names := LoadFenleiNames()
+	hidden := LoadHiddenFenlei()
+	rows, err := store.DB.Query(`
+		SELECT fenlei,
+		       COUNT(*) AS total,
+		       SUM(CASE WHEN status=1 AND price_yuan>0 THEN 1 ELSE 0 END) AS on_sale,
+		       COALESCE(MIN(CASE WHEN price_yuan>0 THEN price_yuan END), 0),
+		       COALESCE(MAX(CASE WHEN price_yuan>0 THEN price_yuan END), 0)
+		FROM more_products
+		GROUP BY fenlei
+		ORDER BY on_sale DESC, total DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]FenleiStat, 0)
+	seen := map[string]bool{}
+	for rows.Next() {
+		var st FenleiStat
+		if rows.Scan(&st.Fenlei, &st.Total, &st.OnSale, &st.MinPrice, &st.MaxPrice) != nil {
+			continue
+		}
+		st.Fenlei = strings.TrimSpace(st.Fenlei)
+		if st.Fenlei == "" {
+			continue
+		}
+		if n := strings.TrimSpace(names[st.Fenlei]); n != "" {
+			st.Name = n
+		} else {
+			st.Name = "分类" + st.Fenlei
+		}
+		st.Hidden = hidden[st.Fenlei]
+		out = append(out, st)
+		seen[st.Fenlei] = true
+	}
+	// 名字表里有、但库里还没商品的分类也列出来（方便对照上游）
+	for id, name := range names {
+		if seen[id] {
+			continue
+		}
+		out = append(out, FenleiStat{
+			Fenlei: id, Name: name, Hidden: hidden[id],
+		})
+	}
+	return out, nil
+}
+
+// HideFenlei 从前台删除该分类：记入隐藏表 + 全部分类商品下架。
+func HideFenlei(fenlei string) error {
+	fenlei = strings.TrimSpace(fenlei)
+	if fenlei == "" {
+		return fmt.Errorf("分类为空")
+	}
+	hidden := LoadHiddenFenlei()
+	hidden[fenlei] = true
+	if err := saveHiddenFenlei(hidden); err != nil {
+		return err
+	}
+	now := float64(time.Now().UnixNano()) / 1e9
+	_, err := store.DB.Exec(`UPDATE more_products SET status=0, updated_at=? WHERE fenlei=? AND status=1`, now, fenlei)
+	if err != nil {
+		return err
+	}
+	LoadCatalogFromDB()
+	productcache.Invalidate()
+	return nil
+}
+
+// clearFenleiHidden 只从隐藏表去掉分类，不动商品上下架。
+func clearFenleiHidden(fenlei string) error {
+	hidden := LoadHiddenFenlei()
+	if !hidden[fenlei] {
+		return nil
+	}
+	delete(hidden, fenlei)
+	return saveHiddenFenlei(hidden)
+}
+
+// ShowFenlei 恢复分类到前台：取消隐藏 + 有价商品重新上架。
+func ShowFenlei(fenlei string) error {
+	fenlei = strings.TrimSpace(fenlei)
+	if fenlei == "" {
+		return fmt.Errorf("分类为空")
+	}
+	if err := clearFenleiHidden(fenlei); err != nil {
+		return err
+	}
+	now := float64(time.Now().UnixNano()) / 1e9
+	_, err := store.DB.Exec(
+		`UPDATE more_products SET status=1, updated_at=? WHERE fenlei=? AND price_yuan>0 AND status=0`,
+		now, fenlei)
+	if err != nil {
+		return err
+	}
+	LoadCatalogFromDB()
+	productcache.Invalidate()
+	return nil
+}
+
+// SetProductStatus 单商品上架(1)/下架(0)；上架时若分类被删只取消隐藏，不连带整类上架。
+func SetProductStatus(cid int64, status int) error {
+	if cid <= 0 || (status != 0 && status != 1) {
+		return fmt.Errorf("参数无效")
+	}
+	var fenlei string
+	var price float64
+	err := store.DB.QueryRow(`SELECT fenlei, price_yuan FROM more_products WHERE cid=?`, cid).Scan(&fenlei, &price)
+	if err != nil {
+		return fmt.Errorf("商品不存在")
+	}
+	fenlei = strings.TrimSpace(fenlei)
+	if status == 1 {
+		if price <= 0 {
+			return fmt.Errorf("售价为 0 不能上架，请先改价")
+		}
+		if err := clearFenleiHidden(fenlei); err != nil {
+			return err
+		}
+	}
+	now := float64(time.Now().UnixNano()) / 1e9
+	if _, err := store.DB.Exec(`UPDATE more_products SET status=?, updated_at=? WHERE cid=?`, status, now, cid); err != nil {
+		return err
+	}
+	LoadCatalogFromDB()
+	productcache.Invalidate()
+	return nil
 }
 
 func truncate(s string, n int) string {

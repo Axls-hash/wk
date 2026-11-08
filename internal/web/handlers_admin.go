@@ -889,6 +889,84 @@ func HandleAdminMoreProducts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleAdminMoreFenlei GET /api/admin/more-fenlei —— 货源分类列表（名称/上架数/价区间/是否已删）。
+func HandleAdminMoreFenlei(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	items, err := appsync.ListFenleiStats()
+	if err != nil {
+		errJSON(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]interface{}{"items": items})
+}
+
+// HandleAdminHideMoreFenlei POST /api/admin/more-fenlei/{fenlei}/hide —— 删除分类（前台不显示，商品下架）。
+func HandleAdminHideMoreFenlei(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	fenlei := strings.TrimSpace(r.PathValue("fenlei"))
+	if fenlei == "" {
+		err422(w)
+		return
+	}
+	if err := appsync.HideFenlei(fenlei); err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	audit("more.fenlei.hide", fmt.Sprintf(`{"fenlei":%q}`, fenlei))
+	writeJSON(w, 200, map[string]interface{}{"ok": true, "fenlei": fenlei, "hidden": true})
+}
+
+// HandleAdminShowMoreFenlei POST /api/admin/more-fenlei/{fenlei}/show —— 恢复分类并上架有价商品。
+func HandleAdminShowMoreFenlei(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	fenlei := strings.TrimSpace(r.PathValue("fenlei"))
+	if fenlei == "" {
+		err422(w)
+		return
+	}
+	if err := appsync.ShowFenlei(fenlei); err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	audit("more.fenlei.show", fmt.Sprintf(`{"fenlei":%q}`, fenlei))
+	writeJSON(w, 200, map[string]interface{}{"ok": true, "fenlei": fenlei, "hidden": false})
+}
+
+// HandleAdminSetMoreProductStatus POST /api/admin/more-products/{cid}/status {"status":0|1}
+func HandleAdminSetMoreProductStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	cid, ok := pathInt64(w, r, "cid")
+	if !ok {
+		return
+	}
+	var body struct {
+		Status *int `json:"status"`
+	}
+	if !readJSON(w, r, &body) || body.Status == nil {
+		err422(w)
+		return
+	}
+	st := *body.Status
+	if err := appsync.SetProductStatus(cid, st); err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	action := "more.status.off"
+	if st == 1 {
+		action = "more.status.on"
+	}
+	audit(action, fmt.Sprintf(`{"cid":%d,"status":%d}`, cid, st))
+	writeJSON(w, 200, map[string]interface{}{"cid": cid, "status": st})
+}
+
 // HandleAdminSetMoreProductPrice POST /api/admin/more-products/{cid}/price {"price_yuan": 12.5}
 // price_yuan：>0 自定义售价；<=0 恢复天河默认价（price_yuan 回到 base_yuan 并清覆盖标记）。
 // 只改本系统的结算/展示价，下单仍按原 cid/kcname/kcid 提交天河，不影响上游扣款。

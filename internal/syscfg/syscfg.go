@@ -1,4 +1,4 @@
-// Package syscfg 后台可改的运行时对接配置：易支付 + 丸子网课 API + 实习打卡。
+// Package syscfg 后台可改的运行时对接配置：易支付 + 天河课程 API + 实习打卡。
 //
 // 优先级：数据库 system_settings > 启动时 .env/环境变量。
 // 管理端保存后即时写入内存 config，无需重启。
@@ -24,19 +24,21 @@ var secretKeys = map[string]bool{
 
 // 允许写入的键（防任意写库）。
 var allowedKeys = map[string]bool{
-	"site_url":         true,
-	"epay_api_url":     true,
-	"epay_pid":         true,
-	"epay_key":         true,
-	"epay_type":        true,
-	"skyriver_url":     true,
-	"skyriver_uid":     true,
-	"skyriver_key":     true,
-	"course_price":     true, // 元，写入后换算为 CoursePriceFen
+	"site_url":          true,
+	"epay_api_url":      true,
+	"epay_pid":          true,
+	"epay_key":          true,
+	"epay_type":         true,
+	"skyriver_url":      true,
+	"skyriver_uid":      true,
+	"skyriver_key":      true,
+	"course_price":      true, // 元，写入后换算为 CoursePriceFen
 	"sxdk_upstream_url": true,
-	"sxdk_admin":       true,
-	"sxdk_token":       true,
-	"sxdk_price_yuan":  true,
+	"sxdk_admin":        true,
+	"sxdk_token":        true,
+	"sxdk_price_yuan":   true,
+	"register_open":     true, // "1"/"0"
+	"register_code":     true, // 邀请码；空字符串表示清空（开放时不要求邀请码）
 }
 
 // LoadFromDB 在 store 打开后调用：用库内值覆盖 env 默认值。
@@ -78,7 +80,9 @@ type View struct {
 	SxdkTokenSet    bool   `json:"sxdk_token_set"`
 	SxdkPriceYuan   string `json:"sxdk_price_yuan"`
 	SxdkOK          bool   `json:"sxdk_ok"`
-	Source          string `json:"source"` // "db" | "env" 提示
+	RegisterOpen bool   `json:"register_open"`
+	RegisterCode string `json:"register_code"` // 邀请码明文（仅管理端可见，方便复制发给用户）
+	Source       string `json:"source"`        // "db" | "env" 提示
 }
 
 // GetView 返回当前生效配置（内存值，已含 DB 覆盖）。
@@ -106,7 +110,9 @@ func GetView() View {
 		SxdkTokenSet:    strings.TrimSpace(config.SxdkToken) != "",
 		SxdkPriceYuan:   sxdkPrice,
 		SxdkOK:          config.SxdkUpstreamURL != "" && config.SxdkAdmin != "" && config.SxdkToken != "",
-		Source:          src,
+		RegisterOpen: config.RegisterOpen,
+		RegisterCode: config.RegisterCode,
+		Source:       src,
 	}
 }
 
@@ -125,6 +131,8 @@ type SaveInput struct {
 	SxdkAdmin       *string `json:"sxdk_admin"`
 	SxdkToken       *string `json:"sxdk_token"`
 	SxdkPriceYuan   *string `json:"sxdk_price_yuan"`
+	RegisterOpen *bool   `json:"register_open"`
+	RegisterCode *string `json:"register_code"` // 指针存在即覆盖（可空=不要求邀请码）
 }
 
 // Save 校验并落库，同时热更新内存 config。
@@ -178,6 +186,30 @@ func Save(in SaveInput) (View, error) {
 			}
 			updates["sxdk_price_yuan"] = v
 		}
+	}
+
+	if in.RegisterOpen != nil {
+		if *in.RegisterOpen {
+			updates["register_open"] = "1"
+		} else {
+			updates["register_open"] = "0"
+		}
+	}
+	if in.RegisterCode != nil {
+		updates["register_code"] = strings.TrimSpace(*in.RegisterCode)
+	}
+
+	// 开放注册时必须有邀请码，避免无门槛注册白嫖
+	wantOpen := config.RegisterOpen
+	if v, ok := updates["register_open"]; ok {
+		wantOpen = v == "1"
+	}
+	codeAfter := config.RegisterCode
+	if v, ok := updates["register_code"]; ok {
+		codeAfter = v
+	}
+	if wantOpen && strings.TrimSpace(codeAfter) == "" {
+		return View{}, fmt.Errorf("开放注册时必须设置邀请码")
 	}
 
 	if t, ok := updates["epay_type"]; ok && t != "" {
@@ -270,6 +302,18 @@ func applyMap(m map[string]string) {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && f > 0 {
 			config.SxdkPriceYuan = f
 		}
+	}
+
+	if v, ok := m["register_open"]; ok {
+		vv := strings.ToLower(strings.TrimSpace(v))
+		config.RegisterOpen = vv == "1" || vv == "true" || vv == "yes"
+	}
+	if v, ok := m["register_code"]; ok {
+		config.RegisterCode = strings.TrimSpace(v)
+	}
+	// 开放但邀请码为空时强制关闭（与启动校验一致）
+	if config.RegisterOpen && strings.TrimSpace(config.RegisterCode) == "" {
+		config.RegisterOpen = false
 	}
 }
 

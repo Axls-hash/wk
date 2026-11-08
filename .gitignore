@@ -1,0 +1,24 @@
+# 二进制与本地数据
+daili-go.exe
+*.exe
+*.db
+*.db-wal
+*.db-shm
+*.bak
+test_*.db*
+
+# 敏感配置
+.env
+.admin_secret
+logs/
+
+.credential_key
+
+# Extra local/binary artifacts
+wk_dl_linux
+daili-go
+daili-go.exe*
+*.exe~
+*.old
+deploy/backend/daili-go
+deploy/frontend.tar.gz

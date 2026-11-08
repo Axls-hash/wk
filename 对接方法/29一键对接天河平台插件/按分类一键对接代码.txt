@@ -1,0 +1,31 @@
+先把下面这些代码复制到网站根目录下的apisub.php文件！！！
+
+
+case 'yjdj':
+    if ($userrow['uid'] == 1) {
+        $hid = trim(strip_tags(daddslashes($_GET['hid'])));
+        $pricee = trim(strip_tags(daddslashes($_GET['pricee'])));
+        $category = trim(strip_tags(daddslashes($_GET['category'])));
+        $a = $DB->get_row("select * from qingka_wangke_huoyuan where hid='{$hid}' ");
+        $data = array("uid" => $a["user"], "key" => $a["pass"], "fenlei" => $category);
+        $er_url = "{$a["url"]}api.php?act=getclass";
+        $result = get_url($er_url, $data);
+        $result1 = json_decode($result, true);
+        $DB->query("insert into qingka_wangke_fenlei (sort,name,status,time) values ('0','{$a["name"]}','1',NOW())");
+        $b = $DB->get_row("select * from qingka_wangke_fenlei where name='{$a["name"]}' ORDER BY id DESC LIMIT 0,1");
+        $data = $result1["data"];
+        $numItems = count($data);
+        $i = 0;
+        foreach ($data as $k => $value) {
+            if ($value['fenlei'] == $category) { // 对比用户输入的分类ID
+                $price = $value['price'] * $pricee / 0.2; // 1.05 就是增加 5% 看不懂问数学老师
+                $sort = $i + 1; // 排序字段，可以根据需要进行调整
+                $DB->query("insert into qingka_wangke_class (name, getnoun, noun, fenlei, queryplat, docking, price, sort, content) values ('{$value['name']}', '{$value['cid']}', '{$value['cid']}', '{$b["id"]}', '$hid', '$hid', '{$price}', '{$sort}', '{$value['content']}')");
+                $i++;
+            }
+        }
+        jsonReturn(1, "已上架{$a["name"]}的全部分类22的项目，共计{$i}个，并自动新建分类到【{$b["name"]}】中，价格、排序和内容已更新");
+    } else {
+        jsonReturn(0, "无权限");
+    }
+    break;

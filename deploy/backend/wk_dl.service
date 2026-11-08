@@ -1,0 +1,12 @@
+[Unit]
+Description=wk_dl course platform (daili-go)
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/wk_dl1/backend
+ExecStart=/var/www/wk_dl1/backend/daili-go
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

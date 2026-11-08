@@ -1,0 +1,242 @@
+对接必看！！！
+    对接前请先前往个人中心升级对接账号，并输入您服务器ip，多个ip使用英文逗号隔开，目前每个账号最多支持两个ip
+    如果您有更多ip，请联系上级审核绑定
+    升级成功后，您的token会以弹框形式告知您，请勿泄露您的token，并保存好。
+    此模板开发时间为：2023-07-01
+    最后更新时间为：2026-09-01
+    更新周期一般为：1-2月
+    非首次部署（数据库千万别替换）
+    全量更新（首次部署）：请划至底部看教程
+    增量更新请参考每次更新日志
+
+
+增量更新：
+    ###2026-09-01
+        更新内容：
+            1.修复学习通学校搜索（xxtGetSchoolList）误报「网络异常」：源台已返回但因无 code 字段被判失败
+            2.上游请求改为：只要响应能成功 json 解析为数组即视为有效（api/cron/upstream）
+            3.修复 xxyGetSchoolList 官方失败回退源台时误判变量（$resp→$response）
+            4.工学云（gxy）新增上下班打卡类型（上班/下班/休息日/节假），与习讯云类型列表独立
+            5.工学云新增「项目开始时间」「今天是第几周？」表单项，二者联动；自动获取信息/编辑订单会回填
+            6.版本号更新为 260901
+        更新操作：
+            1.替换 copilot.php。文件地址：/index/copilot.php（版本号显示为 260901）
+            2.替换 api.php。文件地址：/sxdk/api.php
+            3.替换 cron.php。文件地址：/sxdk/cron.php
+            4.替换 upstream.php。文件地址：/sxdk/upstream.php（套娃上级建议同步替换）
+            5.可选-仅修改 setting.php 中 $sxdk_ts_version 为 260901（或整文件对照后保留自己的 token/价格）
+    ###2026-08-07
+        更新内容：
+            1.修复套娃模板不重要的bug
+        更新操作：
+            1.替换 copilot.php。文件地址：/index/copilot.php（仅修改版本号）
+            2.替换 api.php。文件地址：/sxdk/api.php
+            3.替换 upstream.php。文件地址：/sxdk/upstream.php
+            4.修改 setting.php 中 $sxdk_ts_version 为 260807（仅修改版本号）
+    ###2026-08-04
+        更新内容：
+            1.修复下单失败问题，修复源台有单子、二开无单子问题
+            2.新增套娃上级网关（子站可对接本站，详见 /sxdk/upstream.php 文件头注释）
+            3.价格、源台账号token、删单退款开关统一到 /sxdk/setting.php
+            4.版本号更新为 260804
+        更新操作：
+            1.替换 copilot.php。文件地址：/index/copilot.php（版本号显示为 260804）
+            2.替换 api.php。文件地址：/sxdk/api.php
+            3.替换 cron.php。文件地址：/sxdk/cron.php
+            4.新增 setting.php。文件地址：/sxdk/setting.php
+               （在此文件修改：各平台价格、源台 token/账号、对接地址 urlList、删单是否退款、ts_version；api/cron/upstream 共用，只改这一处）
+            5.新增 upstream.php。文件地址：/sxdk/upstream.php
+               （仅当你要当套娃上级时需要；子站怎么配看该文件顶部注释）
+            6.若以前已在 api.php / cron.php 里填过 token，请把同样内容填进 setting.php，避免仍是占位符
+            7.说明文件更名为：2026-08-04对接必看.txt
+    ###2026-07-15
+        更新内容：
+            1.重大安全性更新
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.替换cron.php文件。文件地址：/sxdk/cron.php
+            4.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php 中 sendPostRequest函数内
+            5.修改token、账号。文件地址：/sxdk/cron.php 中 sendPostRequest函数内
+    ###2026-07-08--
+        更新内容：
+            1.在 ###2026-07-05 基础上，优化bug
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php 中 sendPostRequest函数内
+            4.修改token、账号。文件地址：/sxdk/cron.php 中 sendPostRequest函数内
+    ###2026-07-05
+        更新内容：
+            1.新增博行-微信小程序
+            2.新增成学云-微信小程序
+            3.新增校友邦补卡
+            4.修改很多ui
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php 中 sendPostRequest函数内
+            4.修改token、账号。文件地址：/sxdk/cron.php 中 sendPostRequest函数内
+    ###2026-05-26
+        更新内容：
+            1.gxy新增补总结，补打卡
+            2.xxy补充打卡类型选项
+            3.主动同步新增修复sxdkId为0的代码，更新后请手动执行一次主页同步即可（2026-03-14更新内容，从未操作的话请执行）
+            4.网络请求修改为多源地址请求，提高容错率
+            5.新增本地学校缓存列表
+            6.极大提升页面打开速度
+        更新操作：
+            1.将/sxdk/temp文件夹及其内容添加到服务器/sxdk/temp，如果可以的话，请给sxdk内temp文件夹写入权限
+            2.替换copilot.php文件。文件地址：/index/copilot.php
+            3.替换api.php文件。文件地址：/sxdk/api.php
+            4.替换cron.php文件。文件地址：/sxdk/cron.php
+            5.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php 中 sendPostRequest函数内
+            6.修改token、账号。文件地址：/sxdk/cron.php 中 sendPostRequest函数内
+            7.更新完成后，请作者以uid=1的账号身份，在前端点击拉去进度一次，用来修复以往小量订单无法链接源台问题（2026-03-14更新内容，从未操作的话请执行）
+    ###2026-03-14
+        更新内容：
+            1.新增在线反馈，订单操作下拉选项有携带订单参数反馈，主界面搜索栏上方有全局反馈，反馈后AI率先3分钟内进行解决回复，源台作者不定期重新回复，具体回复时间tg群内查看
+            2.主动同步新增修复sxdkId为0的代码，更新后请手动执行一次即可
+            3.新增网络请求按需重试，新增下单容错，避免因网络丢包造成问题，具有更详细的日志记录，拒绝网络问题造成的二开系统卡死
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php（可选，无关紧要）
+            2.替换api.php文件。文件地址：/sxdk/api.php（必须替换）
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+            4.更新完成后，请作者以uid=1的账号身份，在前端点击拉去进度一次，用来修复以往小量订单无法链接源台问题
+    ###2026-03-05
+        更新内容：
+            1.新增广西职业
+            2.新增江西智慧教育
+            3.新增uid搜索
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php（可选，无关紧要）
+            2.替换api.php文件。文件地址：/sxdk/api.php（必须替换）
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-12-25
+        更新内容：
+            1.修复xxy获取学校失败问题（仅更新一个case内容）
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php（可选，无关紧要）
+            2.替换api.php文件。文件地址：/sxdk/api.php（必须替换）
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-11-25 紧急加更
+        更新内容：
+            1.修复xyb绑微未扣除一次性费用问题（源台扣除，二开未扣的问题，账号ts会将扣除100ts如数返还，已绑定微信为过失赠送）
+            2.增加扣除费用弹框内容鲜红提示
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php（可选，无关紧要）
+            2.替换api.php文件。文件地址：/sxdk/api.php（必须替换）
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-11-25
+        更新内容：
+            1.新增xyb绑微1号
+            2.新增showdoc微信推送
+            3.优化部分显示问题
+            4.默认开启删除订单退款
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-11-14
+        更新内容：
+            1.新增uid=1可获取个人源台信息，页面仅uid=1展示源台余额信息
+            2.xyb增加账密打卡方式
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-11-08
+        更新内容：
+            1.修复补报告的显示bug，部分平台下单补报告未显示订单记录
+            2.修复补报告下单造成订单关闭bug，仅二开关闭，不影响源台，拉取进度会自动修复
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-10-27
+        更新内容：
+            1.修复因习讯宁夏官方服务器问题导致的加载速度慢，增加本地json缓存
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php(可选，仅修改版本号)
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-10-16
+        更新内容：
+            1.新增习讯宁夏，已合并到习讯云内
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-10-09
+        更新内容：
+            1.增加项目关键词自动获取
+            2.增加报告字数设置
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-07-15
+        更新内容：
+            1.修改下单逻辑，减少回源未执行造成的下单失败
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php （可选，仅改变html显示版本号）
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2025-06-30
+        更新内容：
+            1.新增补报告系列功能（补报告即刻起，完全免费）
+            2.新增删除订单退款功能（可选，价格设置代码函数上一行）
+            3.TaiShan已正式完全接手Copilot Ai
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.修改价格、token、账号、可选删除退款开关。文件地址：/sxdk/api.php
+    ###2024-09-27
+        更新内容：
+            1.订单设置新增绑定法定节假日调休与假期
+            2.新增获取源台29专属公告
+            3.vue、jquery插件本地化
+            4.新增批量操作功能（新）
+            5.优化添加订单无法设置法定节假日bug（新）
+        更新操作：
+            1.替换copilot.php文件。文件地址：/index/copilot.php
+            2.替换api.php文件。文件地址：/sxdk/api.php
+            3.上传sxdk文件夹中vue、jquery两个文件夹至/sxdk/
+            4.修改价格、token、账号。文件地址：/sxdk/api.php
+            5.修改token、账号。文件地址：/sxdk/cron.php
+
+
+
+
+！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+！！！！！！！！sence 2023-07-01！！！！！！！！！！！！
+！！！！！！！下面是重新部署文件配置方法！！！！！！！！
+！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+一、文件放入位置：
+    将整个sxdk文件夹放到网站根目录
+    将index文件夹内的文件放入网站根目录index文件夹内
+
+二、前端导航配置：
+    /index/index.php 内添加：<li> <a class="multitabs" href="copilot">实习打卡</a> </li>
+
+三、数据库：
+    qingka_wangke_sxdk.sql 导入mysql数据库就行
+
+四、token / 价格 / 退款配置（统一一处）：
+    /sxdk/setting.php
+    在此填写：源台 token、源台账号、各平台价格、删除订单是否退款
+    （api.php、cron.php、upstream.php 已共用，不必再分别去三个文件里改）
+
+五、添加计划任务同步订单信息
+    域名+/sxdk/cron.php
+    建议2-5分钟一次
+
+六、套娃上级（可选）：
+    上传 /sxdk/upstream.php 后，按该文件顶部注释配置子站即可
+
+七、测试三步：
+    1.随意输入账密自动获取观察返回提示。作用：测试平台是否对接成功。
+    2.添加订单观察订单列表是否显示。作用：测试数据库是否导入成功。
+    3.执行计划任务观察日志是否显示【拉取完成！同步：＇***＇条成功】。作用：测试计划任务是否配置成功。

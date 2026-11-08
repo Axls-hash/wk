@@ -1,0 +1,50 @@
+# 本地/自建机一键起：MySQL + wk_dl
+# 用法：
+#   1) cp .env.docker.example .env 并填密钥
+#   2) docker compose up -d --build
+#   3) 浏览器打开 http://127.0.0.1:8000
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: wk_dl
+      MYSQL_USER: wk
+      MYSQL_PASSWORD: wkpass
+    volumes:
+      - wk_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      ADDR: ":8000"
+      DATABASE_URL: mysql://wk:wkpass@mysql:3306/wk_dl
+    volumes:
+      - wk_logs:/app/logs
+      - wk_backups:/app/backups
+      - wk_data:/app/data
+
+volumes:
+  wk_mysql:
+  wk_logs:
+  wk_backups:
+  wk_data:

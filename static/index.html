@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/jpeg" href="/assets/img/logo.jpg" />
+  <title>海鸥爱学习</title>
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body data-page="index">
+  <div class="app">
+    <header class="nav" id="navbar"></header>
+
+    <main class="page">
+      <!-- 首页公告横幅（30s 轮询，JS 填充） -->
+      <div id="announce-wrap" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px"></div>
+
+      <!-- 启动占位 -->
+      <div id="boot-spinner" class="boot-center">
+        <span class="spinner spinner-lg"></span>
+        <div class="boot-text">正在进入…</div>
+      </div>
+
+      <!-- 未登录：居中登录卡片 -->
+      <div id="auth-split" class="auth-split" hidden style="display:flex;justify-content:center;padding-top:2vh">
+        <div class="form-card card"
+          style="width:100%;max-width:430px;padding:38px 34px;text-align:center;border-radius:20px;box-shadow:0 18px 50px rgba(15,23,42,.10),0 2px 8px rgba(15,23,42,.05)">
+          <img src="/assets/img/logo.jpg" alt="海鸥爱学习"
+            style="width:72px;height:72px;border-radius:18px;box-shadow:0 8px 20px rgba(15,23,42,.14);margin-bottom:14px" />
+          <div style="font-size:21px;font-weight:800;letter-spacing:-.01em;color:#0f172a">海鸥爱学习</div>
+          <div id="auth-title" style="font-size:13px;color:#94a3b8;margin:4px 0 22px">登录后查课</div>
+          <form id="auth-form" autocomplete="on" style="text-align:left">
+            <div class="field">
+              <label>用户名</label>
+              <input class="input" id="auth-username" placeholder="2-32 位用户名" autocomplete="username" required />
+            </div>
+            <div class="field" style="margin-top:12px">
+              <label>密码</label>
+              <div class="input-wrap">
+                <input class="input" type="password" id="auth-password" placeholder="••••••••"
+                  autocomplete="current-password" required style="padding-right:40px" />
+                <button type="button" class="input-action" id="auth-showpw" tabindex="-1" aria-label="显示密码">👁</button>
+              </div>
+            </div>
+            <div id="auth-extras" hidden>
+              <div class="field" style="margin-top:12px">
+                <label>邀请码</label>
+                <input class="input" id="auth-invite" placeholder="注册必填，向管理员获取邀请码" autocomplete="on" />
+              </div>
+            </div>
+            <button class="btn btn-primary btn-block" id="auth-submit" type="submit">登录</button>
+          </form>
+          <div id="auth-err"></div>
+          <div class="auth-switch">
+            <span id="auth-switch-label">没有账号？</span><a href="#" id="auth-switch-link">注册</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- 登录后：服务大厅 / 查课下单 -->
+      <div id="home-view"></div>
+    </main>
+  </div>
+
+  <script src="/assets/js/common.js?v=20261019g"></script>
+  <script src="/assets/js/user.js?v=20261019g"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/jpeg" href="/assets/img/logo.jpg" />
+  <title>管理后台</title>
+  <link rel="stylesheet" href="/assets/css/admin.css" />
+</head>
+<body data-page="admin">
+  <!-- 登录 -->
+  <div id="admin-login" class="login-wrap" hidden>
+    <div class="login-card">
+      <h1>管理后台</h1>
+      <div class="sub">安全登录 · 仅限管理员访问</div>
+      <form id="admin-login-form" autocomplete="on">
+        <input class="input" id="admin-login-username" placeholder="管理员账号" autocomplete="username" required />
+        <input class="input" type="password" id="admin-login-password" placeholder="管理员密码" autocomplete="current-password" required />
+        <div id="admin-login-err"></div>
+        <button class="btn btn-primary btn-block" type="submit">登录 →</button>
+      </form>
+      <div class="login-hint">忘记密码请联系系统持有者重置 · 登录记录将被审计</div>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="admin-layout" class="layout" hidden>
+    <div class="topbar">
+      <h1>管理后台</h1>
+      <span class="tip" id="admin-me">—</span>
+      <div class="spacer"></div>
+      <a class="btn btn-sm" href="/" title="返回用户前台">← 前台</a>
+      <button class="btn btn-sm" id="admin-logout">退出登录</button>
+    </div>
+    <div class="nav-tabs" id="admin-tabs" role="tablist">
+      <button class="nav-tab active" role="tab" data-tab="dashboard">📊 看板</button>
+      <button class="nav-tab" role="tab" data-tab="announcements">📢 公告</button>
+      <button class="nav-tab" role="tab" data-tab="prices">💰 平台价格</button>
+      <button class="nav-tab" role="tab" data-tab="more-prices">💠 综合网课价</button>
+      <button class="nav-tab" role="tab" data-tab="syy-prices">🏃 运动定价</button>
+      <button class="nav-tab" role="tab" data-tab="bing-prices">🩺 病例管理</button>
+      <button class="nav-tab" role="tab" data-tab="qd">⏰ 自动签到</button>
+      <button class="nav-tab" role="tab" data-tab="orders">📦 订单汇总</button>
+      <button class="nav-tab" role="tab" data-tab="users">👥 用户管理</button>
+      <button class="nav-tab" role="tab" data-tab="codes">🎟️ 充值码</button>
+      <button class="nav-tab" role="tab" data-tab="logs">📜 流水与审计</button>
+    </div>
+    <div id="admin-panel"></div>
+  </div>
+
+  <script src="/assets/js/common.js?v=20261019g"></script>
+  <script src="/assets/js/admin.js?v=20261019g"></script>
+</body>
+</html>

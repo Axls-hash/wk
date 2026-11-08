@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/jpeg" href="/assets/img/logo.jpg" />
+  <title>支付结果 · 海鸥爱学习</title>
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body data-page="pay">
+  <div class="app">
+    <header class="nav" id="navbar"></header>
+
+    <main class="page page-narrow">
+      <div class="form-card card pay-card" id="pay-card">
+        <h1 id="pay-title">等待支付</h1>
+        <div id="pay-body">
+          <div class="task-status">
+            <span class="spinner"></span>
+            <div><span id="pay-status-text">支付完成后本页会自动更新，请勿关闭…</span></div>
+          </div>
+        </div>
+        <div id="pay-foot" hidden>
+          <a class="btn btn-outline btn-block" href="/">返回首页</a>
+        </div>
+      </div>
+    </main>
+
+    <footer class="foot">海鸥爱学习 · 支付由第三方平台处理</footer>
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+  <script src="/assets/js/user.js"></script>
+</body>
+</html>

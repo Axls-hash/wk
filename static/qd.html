@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+  <meta name="color-scheme" content="light" />
+  <link rel="icon" type="image/jpeg" href="/assets/img/logo.jpg" />
+  <title>海鸥-学习通全自动签到</title>
+  <script src="/assets/js/common.js?v=20261028a"></script>
+  <style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --ink:#151a26;--dim:#5c6575;--faint:#96a0b2;
+  --line:#e9ecf3;--line-soft:#f0f2f8;
+  --acc:#5b5bd6;--acc2:#8b5cf6;--acc-soft:#eef0fe;
+  --ok:#0a9e6e;--ok-soft:#ecf9f3;--ok-line:#c2e9d8;
+  --bad:#d93838;--bad-soft:#fdf0f0;--bad-line:#f5c9c9;
+  --warn:#b25e09;--warn-soft:#fdf5e9;--warn-line:#f0dcb4;
+  --card:#ffffff;
+}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;
+  color:var(--ink);min-height:100vh;padding:28px 20px 60px;
+  background:
+    radial-gradient(900px 320px at 18% -6%,rgba(91,91,214,.055),transparent 60%),
+    radial-gradient(700px 300px at 100% 0%,rgba(16,150,110,.04),transparent 55%),
+    linear-gradient(180deg,#f8f9fd,#f0f2f7);
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:880px;margin:0 auto}
+
+/* ===== 顶栏（无图标：竖向渐变条 + 标题） ===== */
+.topbar{display:flex;align-items:center;gap:16px;margin-bottom:20px;padding-bottom:18px;
+  border-bottom:1px solid var(--line);flex-wrap:wrap;animation:rise .45s cubic-bezier(.22,.9,.32,1) both}
+.topbar .tt h1{font-size:21px;font-weight:700;letter-spacing:-.2px}
+.topbar .tt .sub{font-size:12.5px;color:var(--faint);margin-top:4px;letter-spacing:.2px}
+.topbar .sp{flex:1}
+
+/* ===== 按钮 ===== */
+.btn{border:none;border-radius:10px;padding:10px 20px;font-size:13.5px;font-weight:600;cursor:pointer;
+  transition:.2s;font-family:inherit;display:inline-flex;align-items:center;gap:7px;justify-content:center}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn-go{color:#fff;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#6366f1,#8b5cf6 62%,#8b5cf6);
+  box-shadow:0 6px 18px -4px rgba(99,102,241,.42),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn-go::after{content:'';position:absolute;top:0;left:-80%;width:55%;height:100%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.32),transparent);
+  transform:skewX(-18deg);transition:left .5s ease}
+.btn-go:hover:not(:disabled)::after{left:130%}
+.btn-go:hover:not(:disabled){transform:translateY(-1px)}
+.btn-sm{border-radius:8px;padding:6px 13px;font-size:12.5px;background:#fff;border:1px solid var(--line);
+  color:var(--dim);box-shadow:none;font-weight:500}
+.btn-sm:hover{color:var(--acc);border-color:#ccd2f2;background:#fafbff}
+.btn-sm.danger:hover{color:var(--bad);border-color:var(--bad-line);background:var(--bad-soft)}
+.btn-sm.primary{background:var(--acc-soft);border-color:#dfe3fc;color:var(--acc);font-weight:600}
+.btn-sm.primary:hover{background:#e4e8ff}
+.btn-read{background:#fff;border:1px solid var(--line);color:var(--acc);font-weight:600}
+.btn-read:hover{border-color:#ccd2f2;background:#fafbff;transform:translateY(-1px)}
+
+/* ===== 下单必读 ===== */
+.read-list{list-style:none;margin-top:4px}
+.read-list li{display:flex;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line-soft);
+  font-size:13px;color:var(--dim);line-height:1.75;align-items:flex-start}
+.read-list li:last-child{border-bottom:none;padding-bottom:2px}
+.read-list .n{flex:none;width:20px;height:20px;border-radius:50%;background:var(--acc-soft);color:var(--acc);
+  font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:3px}
+.read-list li b{color:var(--ink);font-weight:600}
+
+/* ===== 汇总 ===== */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{font-size:12px;padding:5px 12px;border-radius:8px;background:#fff;border:1px solid var(--line);
+  color:var(--faint);display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.chip b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:700}
+.chip.on b{color:var(--ok)}
+.chip.bad b{color:var(--bad)}
+
+/* ===== 列表容器 ===== */
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;
+  box-shadow:0 1px 2px rgba(21,26,38,.03),0 10px 34px -18px rgba(21,26,38,.10);
+  animation:rise .5s cubic-bezier(.22,.9,.32,1) .06s both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.acct{display:flex;align-items:center;gap:14px;padding:13px 14px;border-radius:12px;margin-bottom:8px;
+  border:1px solid transparent;transition:.18s}
+.acct:last-child{margin-bottom:0}
+.acct:hover{background:#fafbfe;border-color:var(--line)}
+.acct.off{opacity:.66}
+.avt{width:40px;height:40px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+.avt.run{background:var(--ok-soft);color:var(--ok)}
+.avt.idle{background:#f1f3f8;color:var(--faint)}
+.avt.err{background:var(--bad-soft);color:var(--bad)}
+.acct .info{flex:1;min-width:0}
+.acct .ph{font-size:14.5px;font-weight:650;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.acct .ph .pkg-tag{font-size:10.5px;font-weight:600;color:var(--acc);background:var(--acc-soft);
+  border-radius:5px;padding:1.5px 7px}
+.acct .meta{font-size:12px;color:var(--faint);margin-top:4px;display:flex;gap:11px;flex-wrap:wrap}
+.acct .meta .ok-c{color:var(--ok);font-weight:600}
+.acct .meta .bad-c{color:var(--bad);font-weight:600}
+.acct .meta .last{min-width:100%;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex:none;max-width:250px}
+
+.status-pill{display:inline-flex;align-items:center;gap:5.5px;padding:3px 10px;border-radius:999px;
+  font-size:11px;font-weight:600;white-space:nowrap}
+.status-pill.on{background:var(--ok-soft);color:var(--ok)}
+.status-pill.off{background:#f2f4f9;color:var(--faint)}
+.status-pill.err{background:var(--bad-soft);color:var(--bad)}
+.status-pill.wrn{background:var(--warn-soft);color:var(--warn)}
+.dot{width:5.5px;height:5.5px;border-radius:50%;background:#c8cfdb;position:relative;flex:none}
+.status-pill.on .dot{background:#10b981}
+.status-pill.on .dot::after{content:'';position:absolute;inset:-3px;border-radius:50%;
+  border:1.5px solid #10b981;animation:ripple 1.6s ease-out infinite}
+@keyframes ripple{0%{transform:scale(.6);opacity:1}100%{transform:scale(1.7);opacity:0}}
+
+/* ===== 空状态 ===== */
+.empty{padding:46px 20px;text-align:center;color:var(--faint)}
+.empty .big{width:52px;height:52px;margin:0 auto 14px;border-radius:16px;display:flex;align-items:center;
+  justify-content:center;font-size:22px;color:var(--acc);background:var(--acc-soft)}
+.empty h3{font-size:14.5px;color:var(--dim);font-weight:650;margin-bottom:6px}
+.empty p{font-size:12.5px;line-height:1.7;margin-bottom:16px}
+
+/* ===== 输入 ===== */
+input[type=text],input[type=password]{background:#f8f9fc;border:1.5px solid var(--line);border-radius:10px;
+  padding:11px 13px;font-size:14px;color:var(--ink);outline:none;width:100%;transition:.18s;font-family:inherit}
+input::placeholder{color:#b6bdcc}
+input:focus{border-color:#a6abf5;background:#fff;box-shadow:0 0 0 3.5px rgba(99,102,241,.10)}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--dim);margin-bottom:6px}
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:42px}
+.eye{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:none;background:transparent;
+  cursor:pointer;font-size:15px;padding:7px 9px;border-radius:8px;line-height:1;opacity:.6;transition:.15s}
+.eye:hover{opacity:1;background:#eef0f7}
+.hint{font-size:12px;color:var(--faint);line-height:1.7;display:flex;gap:6px}
+.hint svg{flex:none;margin-top:2px}
+
+/* ===== 套餐 ===== */
+.pkg{border:1.5px solid var(--line);border-radius:12px;padding:11px 18px;cursor:pointer;transition:.18s;
+  background:#fff;text-align:center;flex:1;position:relative}
+.pkg:hover{border-color:#c9cef0}
+.pkg.active{border-color:var(--acc);background:#fbfbff;box-shadow:0 0 0 3px rgba(99,102,241,.10)}
+.pkg.active::before{content:'✓';position:absolute;top:-7px;right:-5px;width:18px;height:18px;border-radius:50%;
+  background:var(--acc);color:#fff;font-size:10.5px;font-weight:700;
+  display:flex;align-items:center;justify-content:center}
+.pkg .pkg-n{font-size:13.5px;font-weight:700}
+.pkg .pkg-m{font-size:11.5px;color:var(--faint);margin-top:3px;font-variant-numeric:tabular-nums}
+.pkg.active .pkg-m{color:var(--acc)}
+
+/* ===== 弹窗 ===== */
+.mask{position:fixed;inset:0;background:rgba(21,26,38,.40);backdrop-filter:blur(3px);z-index:90;
+  opacity:0;pointer-events:none;transition:.22s}
+.mask.show{opacity:1;pointer-events:auto}
+.modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-46%) scale(.97);width:min(430px,92vw);
+  max-height:88vh;overflow:auto;background:#fff;border-radius:18px;padding:22px;z-index:91;
+  opacity:0;pointer-events:none;transition:.24s cubic-bezier(.22,.9,.32,1);
+  box-shadow:0 24px 70px -12px rgba(21,26,38,.32)}
+.modal.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.modal.lg{width:min(640px,94vw)}
+.modal h3{font-size:16px;font-weight:700;margin-bottom:4px}
+.modal .m-sub{font-size:12px;color:var(--faint);margin-bottom:16px}
+.m-close{position:absolute;top:14px;right:14px;border:none;background:#f3f5fa;width:28px;height:28px;
+  border-radius:8px;cursor:pointer;font-size:13px;color:var(--dim);transition:.15s}
+.m-close:hover{background:#e9ecf4;color:var(--ink)}
+.m-foot{display:flex;gap:10px;margin-top:16px}
+.m-foot .btn{flex:1}
+.btn-cancel{background:#f3f5fa;color:var(--dim)}
+.btn-cancel:hover{background:#e9ecf4}
+
+/* ===== 日志 ===== */
+.term{font-size:12px;line-height:1.8;max-height:300px;overflow:auto;background:#f8f9fc;
+  border:1px solid var(--line-soft);border-radius:12px;padding:9px 13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.term::-webkit-scrollbar{width:6px}
+.term::-webkit-scrollbar-thumb{background:#dde2ee;border-radius:3px}
+.log-line{display:flex;gap:9px;padding:4px 2px;border-bottom:1px dashed #eef1f6;align-items:flex-start}
+.log-line:last-child{border-bottom:none}
+.log-line .t{color:var(--faint);flex:none;font-size:11px;padding-top:2.5px;font-variant-numeric:tabular-nums}
+.log-line .lv{width:6px;height:6px;border-radius:50%;background:#c8cfdb;flex:none;margin-top:8px}
+.log-line.ok .lv{background:#10b981}
+.log-line.bad .lv{background:#ef4444}
+.log-line.warn .lv{background:#f59e0b}
+.log-line.sign .lv{background:#6366f1}
+.log-line .m{flex:1;word-break:break-all;color:var(--dim)}
+.log-line.ok .m{color:var(--ok)}
+.log-line.bad .m{color:var(--bad)}
+.log-line.warn .m{color:var(--warn)}
+.log-line.sign .m{color:var(--acc);font-weight:600;font-family:inherit}
+.rec-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+.rec-table th{font-size:11px;color:var(--faint);text-align:left;font-weight:600;padding:6px 8px;
+  border-bottom:1px solid var(--line-soft)}
+.rec-table td{padding:7px 8px;border-bottom:1px dashed #eef1f6;color:var(--dim)}
+.rec-table tr:last-child td{border-bottom:none}
+.m-sec{font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--faint);margin:16px 0 8px;text-transform:uppercase}
+
+/* ===== 人脸上传 ===== */
+.face-row{display:flex;gap:12px;align-items:flex-start}
+.face-box{flex:none;width:88px;height:88px;border:1.5px dashed #ccd3e0;border-radius:14px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  background:#fbfcfe;transition:.2s;overflow:hidden;position:relative}
+.face-box:hover{border-color:#a6abf5;background:#fafbff}
+.face-box .ph{font-size:19px;line-height:1}
+.face-box .ph-t{font-size:10.5px;color:var(--faint)}
+.face-box img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+/* ===== 其他 ===== */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);
+  border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.toast{position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-10px);
+  background:#fff;border:1px solid var(--line);
+  padding:11px 22px;border-radius:12px;font-size:13px;z-index:99;opacity:0;pointer-events:none;
+  transition:.28s;box-shadow:0 12px 36px -8px rgba(21,26,38,.20);max-width:88vw;font-weight:500}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{border-color:var(--ok-line);color:var(--ok)}
+.toast.bad{border-color:var(--bad-line);color:var(--bad)}
+
+@media (max-width:640px){
+  body{padding:18px 12px 44px}
+  .topbar .tt h1{font-size:18.5px}
+  .card{padding:9px;border-radius:14px}
+  .acct{flex-wrap:wrap}
+  .acct .info{flex:1 1 100%}
+  .acts{max-width:none;width:100%;justify-content:flex-start}
+  .chips{width:100%}
+}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="tt">
+      <h1>海鸥-学习通全自动签到</h1>
+      <div class="sub">上号即自动监控 · 到期自动停止 · 支持多账号管理</div>
+    </div>
+    <div class="sp"></div>
+    <button class="btn btn-read" id="btnRead">📖 下单必读</button>
+    <button class="btn btn-go" id="btnTopAdd">＋ 上号</button>
+  </div>
+
+  <div class="chips" id="chips" style="display:none"></div>
+
+  <div class="card" id="listCard">
+    <div id="acctList"></div>
+  </div>
+</div>
+
+<!-- 上号弹窗 -->
+<div class="mask" id="addMask"></div>
+<div class="modal" id="addModal">
+  <button class="m-close">✕</button>
+  <h3>上号</h3>
+  <div class="m-sub">登录学习通账号，扣费激活后自动监控，课上有签到自动完成</div>
+  <div class="field">
+    <label>学习通手机号</label>
+    <input type="text" id="phone" placeholder="手机号">
+  </div>
+  <div class="field">
+    <label>密码</label>
+    <div class="pw-wrap">
+      <input type="password" id="pass" placeholder="密码">
+      <button type="button" class="eye" id="eye" tabindex="-1">👁</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>监控时长</label>
+    <div style="display:flex;gap:10px" id="pkgRow">
+      <div class="pkg active" data-pkg="week" id="pkgWeekCard">
+        <div class="pkg-n">周卡</div><div class="pkg-m" id="pkgWeek">7 天</div>
+      </div>
+      <div class="pkg" data-pkg="month" id="pkgMonthCard">
+        <div class="pkg-n">月卡</div><div class="pkg-m" id="pkgMonth">30 天</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    <button class="btn btn-go" id="btnAdd" style="width:100%">登录上号（扣费开通）</button>
+  </div>
+</div>
+
+<!-- 下单必读弹窗 -->
+<div class="mask" id="readMask"></div>
+<div class="modal" id="readModal">
+  <button class="m-close">✕</button>
+  <h3>下单必读</h3>
+  <div class="m-sub">上号前请先看完这几条，能省下大部分售后问题</div>
+  <ul class="read-list">
+    <li><span class="n">1</span><span>第一次登录上号速度可能比较慢，一般 <b>5~6 秒</b>，属正常现象。</span></li>
+    <li><span class="n">2</span><span>此项目为学习通的<b>课程签到</b>，支持手势签到、签到码签到、带定位的手势/签到码签到、位置签到、带人脸的各种签到；<b>扫码签到</b>填好推送链接后自动推送到微信，让同学扫码即可签到。</span></li>
+    <li><span class="n">3</span><span>对比手动版，<b>性价比拉满</b>，适合养下面人的信任。</span></li>
+    <li><span class="n">4</span><span>推送链接：去微信公众号搜 <b>showdoc</b>，把专属链接复制到工作台「推送」里就可以。</span></li>
+    <li><span class="n">5</span><span>本项目<b>稳定一年有余，放心上号，售后拉满</b>。</span></li>
+  </ul>
+</div>
+
+<!-- 日志弹窗 -->
+<div class="mask" id="logMask"></div>
+<div class="modal lg" id="logModal">
+  <button class="m-close">✕</button>
+  <h3 id="logTitle">实时日志</h3>
+  <div class="m-sub" id="logSub">每 5 秒自动刷新 · 关闭窗口不影响监控</div>
+  <div class="term" id="logTerm"><div style="text-align:center;color:#96a0b2;padding:20px 0">暂无日志</div></div>
+  <div class="m-sec">签到记录</div>
+  <table class="rec-table" id="recTable"><thead><tr><th>时间</th><th>活动</th><th>课程</th></tr></thead><tbody></tbody></table>
+</div>
+
+<!-- 推送配置弹窗 -->
+<div class="mask" id="pushMask"></div>
+<div class="modal" id="pushModal">
+  <button class="m-close">✕</button>
+  <h3>微信推送链接</h3>
+  <div class="m-sub" id="pushSub">每次签到成功自动推送到微信；留空不推送</div>
+  <div class="field">
+    <input type="text" id="pushUrl" placeholder="https://push.showdoc.com.cn/你的专属地址">
+  </div>
+  <div class="m-foot">
+    <button class="btn btn-cancel">取消</button>
+    <button class="btn btn-go" id="btnPush">保存</button>
+  </div>
+</div>
+
+<!-- 人脸上传弹窗 -->
+<div class="mask" id="faceMask"></div>
+<div class="modal" id="faceModal">
+  <button class="m-close">✕</button>
+  <h3>人脸照片</h3>
+  <div class="m-sub" id="faceSub">遇到人脸识别/拍照签到且无档案照片时自动使用（一次上传永久生效）</div>
+  <div class="face-row">
+    <div class="face-box" id="faceBox" title="点击选择照片">
+      <div class="ph" id="facePh">📷</div>
+      <div class="ph-t" id="facePhT">选择照片</div>
+      <img id="facePrev" style="display:none" alt="">
+    </div>
+    <div style="flex:1;min-width:170px">
+      <input type="file" id="faceFile" accept="image/jpeg,image/png,image/bmp,image/webp" style="display:none">
+      <button class="btn btn-sm primary" id="btnFaceUpload" style="padding:9px 18px">上传人脸</button>
+      <div class="hint" style="margin-top:10px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#96a0b2" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>本人清晰正脸照，支持 jpg/png/bmp/webp，≤10MB</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/assets/js/qd.js?v=20261028b"></script>
+</body>
+</html>

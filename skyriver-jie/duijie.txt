@@ -1,0 +1,107 @@
+标识	"skyriver" => "天河"
+下单接口	else if ($type == "skyriver") {
+$data = array("uid" => $a["user"], "key" => $a["pass"], "platform" => $noun, "school" => $school, "user"
+=>$user, "pass" => $pass, "kcname" => $kcname, "kcid" => $kcid, "miaoshua" => $miaoshua, "city" => $city, "config" => $config, "remarks" => $remarks);
+$skyriver_rl = $a["url"];
+$skyriver_url = "$skyriver_rl/api.php?act=add";
+$result = get_url($skyriver_url, $data);
+$result = json_decode($result, true);
+if ($result["code"] == "0") {
+$b = array("code" => 1, "msg" => "下单成功", "yid" => $result["id"]);
+} else {
+$b = array("code" => -1, "msg" => $result["msg"]);
+}
+return $b;
+}
+查课接口	else if ($type == "skyriver") {
+$data = array("uid" => $a["user"], "key" => $a["pass"], "school" => $school, "user" => $user, "pass" =>
+$pass, "platform" => $noun, "kcid" => $kcid);
+$skyriver_rl = $a["url"];
+$skyriver_url = "$skyriver_rl/api.php?act=get";
+$result = get_url($skyriver_url, $data);
+$result = json_decode($result, true);
+return $result;
+}
+补刷接口	else if ($type == "skyriver") {
+$data = array("uid" => $a["user"], "key" => $a["pass"], "id" => $yid);
+$skyriver_rl = $a["url"];
+$skyriver_url = "$skyriver_rl/api.php?act=budan";
+$result = get_url($skyriver_url, $data);
+$result = json_decode($result, true);
+return $result;
+}
+防串进度接口	else if ($type == "skyriver") {
+$data = array(uid" => $a["user"], "key" => $a["pass"], "username" => $user, "pass" => $pass, "kcid" => $kcid,"noun" => $pt, "school" => $school, "kcname" => $kcname );
+$skyriver_rl = $a["url"];
+$skyriver_url = "$skyriver_rl/api.php?act=jdtb";
+$result = get_url($skyriver_url, $data);
+$result = json_decode($result, true);
+if ($result["code"] == "1") {
+foreach ($result["data"] as $res) {
+$yid = $res["id"];
+$kcname = $res["kcname"];
+$status = $res["status"];
+$process = $res["process"];
+$remarks = $res["remarks"];
+$kcks = $res["courseStartTime"];
+$kcjs = $res["courseEndTime"];
+$ksks = $res["examStartTime"];
+$ksjs = $res["examEndTime"];
+$b[] = array("code" => 1, "msg" => "查询成功", "yid" => $yid, "kcname" => $kcname, "user" => $user, "pass" => $pass, "ksks" => $ksks, "ksjs" => $ksjs, "status_text" => $status, "process" => $process, "remarks" => $remarks);
+}
+} else {
+$b[] = array("code" => -1, "msg" => $result["msg"]);
+}
+return $b;
+}
+修改密码接口	if ($type == "skyriver") {
+$data = array("uid" => $a["user"], "key" => $a["pass"], "id" => $yid, "newpass" => $xgmm);
+$skyriver_rl = $a["url"];
+$skyriver_url = "$skyriver_rl/api.php?act=xgmm";
+$result = get_url($skyriver_url, $data);
+$result = json_decode($result, true);
+return $result;}
+}
+订单暂停接口	if ($type == "skyriver") {
+$data = array("uid" => $a["user"], "key" => $a["pass"], "id" => $yid);
+$skyriver_rl = $a["url"];
+$skyriver_url = "$skyriver_rl/api.php?act=zt";
+$result = get_url($skyriver_url, $data);
+$result = json_decode($result, true);
+return $result;}
+}
+订单转秒接口	if ($type == "skyriver") {
+$data = array("uid" => $a["user"], "key" => $a["pass"], "id" => $yid);
+$skyriver_rl = $a["url"];
+$skyriver_url = "$skyriver_rl/api.php?act=ms_order";
+$result = get_url($skyriver_url, $data);
+$result = json_decode($result, true);
+return $result;}
+}
+实时日志接口	if ($type == "skyriver") {
+$data = array("uid" => $a["user"], "key" => $a["pass"], "id" => $yid );
+$skyriver_rl = $a["url"];
+$skyriver_url = "$skyriver_rl/api.php?act=orderlog";
+$result = get_url($skyriver_url, $data);
+$result = json_decode($result, true);
+return $result;}
+}
+//格式返回示例：
+{
+"code":1,
+"msg":"查询成功",
+"data":[
+{
+"time":"2026-08-07 16:34:16",//日志更新时间
+"process":"无",//订单进度
+"course":"无",//课程名字
+"status":"执行中",//订单状态
+"remarks":"学习结束1.1 - 非遗：人类的活态灵魂 | 看视频: 成功",//日志内容
+"user":"16666666666",//下单账号
+"oid":"龙龙订单ID"//源站ID
+}
+]
+}
+
+我的user是（已清空）
+key是（已清空）

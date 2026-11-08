@@ -1,0 +1,25 @@
+# 单容器演示（无 MySQL）：仅本地快速预览
+# docker compose -f docker-compose.sqlite.yml up -d --build
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ADDR: ":8000"
+      ALLOW_SQLITE: "1"
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      REGISTER_OPEN: "0"
+      SKYRIVER_URL: ${SKYRIVER_URL:-http://skyriver.top}
+      SKYRIVER_UID: ${SKYRIVER_UID:-}
+      SKYRIVER_KEY: ${SKYRIVER_KEY:-}
+    volumes:
+      - wk_sqlite_data:/app/data
+      - wk_sqlite_logs:/app/logs
+
+volumes:
+  wk_sqlite_data:
+  wk_sqlite_logs:

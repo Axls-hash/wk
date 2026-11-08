@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/jpeg" href="/assets/img/logo.jpg" />
+  <title>个人中心 · 海鸥爱学习</title>
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body data-page="agent">
+  <div class="app">
+    <header class="nav" id="navbar"></header>
+
+    <main class="page">
+      <!-- 未登录：登录/注册卡片 -->
+      <div id="agent-auth" class="agent-auth-card" hidden>
+        <div class="page-head">
+          <h1>个人中心</h1>
+          <p>登录后查看自己的订单、积分流水与充值兑换</p>
+        </div>
+        <div class="form-card card">
+          <span class="section-label"><span class="bar"></span><span id="agent-auth-title">代理登录</span></span>
+          <form id="agent-auth-form" autocomplete="on">
+            <div class="field">
+              <label>用户名</label>
+              <input class="input" id="agent-auth-username" placeholder="2-32 位用户名" autocomplete="username" required />
+            </div>
+            <div class="field" style="margin-top:12px">
+              <label>密码</label>
+              <div class="input-wrap">
+                <input class="input" type="password" id="agent-auth-password" placeholder="••••••••"
+                  autocomplete="current-password" required style="padding-right:40px" />
+                <button type="button" class="input-action" id="agent-auth-showpw" tabindex="-1">👁</button>
+              </div>
+            </div>
+            <div id="agent-auth-extras" hidden>
+              <div class="field" style="margin-top:12px">
+                <label>邀请码</label>
+                <input class="input" id="agent-auth-invite" placeholder="注册必填，向管理员获取邀请码" autocomplete="on" />
+              </div>
+              <div class="field" style="margin-top:12px">
+                <label>联系方式（QQ / 微信，可选）</label>
+                <input class="input" id="agent-auth-contact" placeholder="方便管理员联系你" autocomplete="on" />
+              </div>
+              <div style="font-size:11.5px;color:#94a3b8;margin-top:6px">至少 8 位，须同时包含字母与数字</div>
+            </div>
+            <button class="btn btn-primary btn-block" id="agent-auth-submit" type="submit">登录</button>
+          </form>
+          <div id="agent-auth-err"></div>
+          <div class="auth-switch">
+            <span id="agent-auth-switch-label">没有账号？</span><a href="#" id="agent-auth-switch-link">注册代理</a>
+            <span class="auth-tip">（积分下单需管理员充值）</span>
+          </div>
+          <div class="auth-switch" style="margin-top:6px"><a href="/">← 返回课程抓取页</a></div>
+        </div>
+      </div>
+
+      <!-- 已登录：个人中心工作台 -->
+      <div id="agent-dash" hidden>
+        <div class="page-head">
+          <h1>个人中心</h1>
+          <p>订单管理 · 积分账户 · 充值兑换，全部在这一个工作台</p>
+        </div>
+        <div class="ag">
+          <div class="ag-hero-grid">
+            <div class="ag-hero">
+              <div class="ag-hero-label">可用积分</div>
+              <div class="ag-hero-value" id="ag-points">0</div>
+              <div class="ag-hero-sub">1 积分 = 1 元 · 下单时可直接抵扣</div>
+              <button class="ag-hero-btn" id="ag-go-redeem">充值 →</button>
+            </div>
+            <div class="ag-side-stats">
+              <div class="ag-mini"><b id="ag-stat-orders">0</b><span>全部订单</span></div>
+              <div class="ag-mini"><b id="ag-stat-processing">0</b><span>处理中</span></div>
+              <div class="ag-mini"><b id="ag-stat-spent">¥0.00</b><span>累计消费</span></div>
+            </div>
+          </div>
+          <nav class="ag-nav" id="ag-tabs">
+            <button class="ag-nav-item active" data-tab="overview">账户总览</button>
+            <button class="ag-nav-item" data-tab="orders">我的订单</button>
+            <button class="ag-nav-item" data-tab="sxdk">实习打卡</button>
+            <button class="ag-nav-item" data-tab="points">积分流水</button>
+            <button class="ag-nav-item" data-tab="redeem">充值兑换</button>
+            <button class="ag-nav-item" data-tab="settings">账号设置</button>
+          </nav>
+          <div class="card ag-panel" id="ag-panel"></div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="foot">海鸥爱学习 · 订单问题请联系管理员处理</footer>
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+  <script src="/assets/js/user.js"></script>
+</body>
+</html>

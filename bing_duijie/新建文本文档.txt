@@ -1,0 +1,198 @@
+https://case.zmoee.com/api/v1
+
+X-User-Email: user@example.com
+Authorization: Bearer API_KEY
+API 密钥在「个人中心 → API 密钥」生成或重新生成；重新生成后旧密钥立即失效。
+秘钥：（已清空，自行在个人中心生成）
+接口列表
+GET
+/account
+查询当前用户余额和账户信息
+请求参数
+无
+请求示例
+
+GET https://case.zmoee.com/api/v1/account
+X-User-Email: user@example.com
+Authorization: Bearer API_KEY
+返回示例
+{
+  "email": "user@example.com",
+  "name": "超级管理员",
+  "balance": 100,
+  "totalRecharge": 200,
+  "apiKeyCreatedAt": "2026-09-15T06:32:36.387Z",
+  "apiKeyLastUsedAt": "2026-09-15T06:35:45.509Z"
+}
+
+注意：apiKeyCreatedAt / apiKeyLastUsedAt 是密钥的生命周期信息 —— 前者看密钥有多老（要不要轮换），后者看它还在不在被调用。两个字段都可能是 null（表示没生成过 / 生成后一次都没用过）。
+GET
+/applications
+查询已发布病例列表
+请求参数
+无
+请求示例
+
+GET https://case.zmoee.com/api/v1/applications
+X-User-Email: user@example.com
+Authorization: Bearer API_KEY
+返回示例
+[
+  {
+    "id": "模板 ID",
+    "name": "普通模板",
+    "description": "模板说明",
+    "price": 10,
+    "pageSize": "A4",
+    "category": "门诊"
+  }
+]
+
+注意：只返回已发布模板，按更新时间倒序。列表不含字段定义，字段请用 GET /applications/{id} 获取。
+GET
+/applications/{id}
+查询病例字段和价格
+请求参数
+路径参数：id，模板 ID
+请求示例
+
+GET https://case.zmoee.com/api/v1/applications/template-or-order-id
+X-User-Email: user@example.com
+Authorization: Bearer API_KEY
+返回示例
+{
+  "id": "模板 ID",
+  "name": "普通模板",
+  "description": "模板说明",
+  "price": 10,
+  "pageSize": "A4",
+  "category": "门诊",
+  "fields": [
+    {
+      "fieldKey": "patientName",
+      "label": "姓名",
+      "type": "text",
+      "required": true,
+      "maxLength": 20
+    }
+  ],
+  "stamp": {
+    "orgField": "stampOrg",
+    "codeField": "stampCode",
+    "defaultOrg": "印章名称",
+    "defaultCode": "某某专用章",
+    "engineOptions": [
+      { "id": "pArcSize", "min": 20, "max": 260 },
+      { "id": "pWide", "min": 40, "max": 200 }
+    ]
+  }
+}
+
+注意：
+· fields 只包含模板里仍然存在的字段；required 为 true 的必须填写。
+· type 由模板作者声明，常见值是 text / textarea，不是固定枚举。
+· maxLength 为 0 或缺失表示不限长度。
+· stamp 段只在模板开启印章时出现；engineOptions 是印章高级参数的可用值与量程（实际有多项，示例只截取两条）。
+· 不传 stamp 高级参数时使用模板配置，通常不需要逐单调参。
+GET
+/applications/{id}/preview
+读取已生成的模板预览图（长期有效，不会重新生成）
+请求参数
+路径参数：id，模板 ID
+请求示例
+
+GET https://case.zmoee.com/api/v1/applications/template-or-order-id/preview
+X-User-Email: user@example.com
+Authorization: Bearer API_KEY
+返回示例
+{
+  "applicationId": "模板 ID",
+  "name": "普通模板",
+  "imageUrl": "/api/applications/模板ID/preview.png?v=版本号",
+  "updatedAt": "更新时间"
+}
+
+注意：
+· imageUrl 是本站相对路径（不是签名 URL），请拼上你自己的 API 根域名使用。
+· 这张图长期有效，重新生成模板预览图后 ?v= 会变化，据此可判断是否换了图。
+· 这个接口只读取管理员保存模板时生成好的预览图，不会触发新的渲染；模板还没生成过预览图时返回 404。
+POST
+/orders
+提交字段内容，系统按当前 HTML 模板生成图片
+GET
+/orders
+查询当前用户自己的订单列表
+请求参数
+无
+请求示例
+
+GET https://case.zmoee.com/api/v1/orders
+X-User-Email: user@example.com
+Authorization: Bearer API_KEY
+返回示例
+[
+  {
+    "orderId": "订单 ID",
+    "applicationId": "模板 ID",
+    "name": "普通模板",
+    "status": "SUBMITTED",
+    "chargedPoints": 10,
+    "imageUrl": "图片地址",
+    "imageExpiresAt": "过期时间",
+    "createdAt": "2026-09-15T06:40:00.000Z",
+    "updatedAt": "2026-09-15T06:40:12.000Z"
+  }
+]
+
+注意：列表不回显 fields（一次最多 100 条，全量回显太重）。要看某张订单实际用了哪些字段值，用 GET /orders/{id}。
+GET
+/orders/{id}
+查询订单和图片地址
+请求参数
+路径参数：id，订单 ID
+请求示例
+
+GET https://case.zmoee.com/api/v1/orders/template-or-order-id
+X-User-Email: user@example.com
+Authorization: Bearer API_KEY
+返回示例
+{
+  "orderId": "订单 ID",
+  "applicationId": "模板 ID",
+  "status": "SUBMITTED",
+  "chargedPoints": 10,
+  "fields": { "patientName": "张三" },
+  "imageUrl": "图片地址",
+  "imageExpiresAt": "过期时间",
+  "createdAt": "2026-09-15T06:40:00.000Z",
+  "updatedAt": "2026-09-15T06:40:12.000Z"
+}
+
+fields 是实际写进订单的字段值，可用来核对内容有没有被采纳。
+GET
+/orders/{id}/image
+按订单直接取回图片（PNG 二进制，3 天内可重复取）
+请求参数
+路径参数：id，订单 ID
+请求示例
+
+GET https://case.zmoee.com/api/v1/orders/template-or-order-id/image
+X-User-Email: user@example.com
+Authorization: Bearer API_KEY
+返回示例
+PNG 二进制（Content-Type: image/png）。链接不会过期，建议始终用本接口取图。图片云端只保留 3 天，超过后返回 410。
+错误响应
+失败时返回 HTTP 状态码和 JSON：
+
+{
+  "statusCode": 400,
+  "message": "缺少必填字段：姓名（patientName）",
+  "error": "Bad Request"
+}
+状态码	典型触发	处理建议
+400	未知字段、缺必填、超长、applicationId 非法、fields 不是对象、请求体不是合法 JSON、余额不足	不要重试，按响应文案改正入参或充值
+401	缺少鉴权头、邮箱或密钥错误、账号被停用、从未生成密钥	检查 X-User-Email 与 Authorization；去个人中心重新生成密钥
+403	imageUrl 签名已过期（超过 10 分钟）	重新查询订单获取新链接，或改用 /orders/{id}/image
+404	模板不存在或未发布、订单不存在、订单还没出图、模板还没生成预览图	确认 ID 与状态；出图未完成的稍后重试
+410	图片超过 3 天保留期，云端已清理	不可恢复，只能重新下单
+500	服务端内部异常	可带同一个 externalRequestId 重试；持续失败请联系管理员

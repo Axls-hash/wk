@@ -236,6 +236,7 @@ func migrate() error {
 	mustExec(`CREATE INDEX IF NOT EXISTS idx_announcements_active_pinned ON announcements(is_active, is_pinned, created_at DESC)`)
 
 	// 冷门网课商品表：从天河 getclass 差量同步的项目（cid 即天河对接ID/noun）
+	// status 默认 0：同步只入库，前台是否展示由「前台分类」挂载决定。
 	mustExec(`CREATE TABLE IF NOT EXISTS more_products (
 		cid INTEGER PRIMARY KEY,
 		fenlei INTEGER NOT NULL DEFAULT 0,
@@ -244,11 +245,25 @@ func migrate() error {
 		base_yuan REAL NOT NULL DEFAULT 0,
 		price_override INTEGER NOT NULL DEFAULT 0,
 		content TEXT NOT NULL DEFAULT '',
-		status INTEGER NOT NULL DEFAULT 1,
+		status INTEGER NOT NULL DEFAULT 0,
 		updated_at REAL NOT NULL
 	)`)
 	mustExec(`CREATE INDEX IF NOT EXISTS idx_more_products_fenlei ON more_products(fenlei)`)
 	mustExec(`CREATE INDEX IF NOT EXISTS idx_more_products_name ON more_products(name)`)
+
+	// 前台自定义分类：管理员自建名称，再勾选同步来的商品挂上去才展示。
+	mustExec(`CREATE TABLE IF NOT EXISTS front_categories (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		sort_order INTEGER NOT NULL DEFAULT 0,
+		created_at REAL NOT NULL
+	)`)
+	mustExec(`CREATE TABLE IF NOT EXISTS front_category_items (
+		category_id INTEGER NOT NULL,
+		cid INTEGER NOT NULL,
+		PRIMARY KEY (category_id, cid)
+	)`)
+	mustExec(`CREATE INDEX IF NOT EXISTS idx_front_cat_items_cid ON front_category_items(cid)`)
 
 	// 实习打卡订单（sxdk）：独立业务表，与课程订单(orders)完全分开，互不影响
 	mustExec(`CREATE TABLE IF NOT EXISTS sxdk_orders (

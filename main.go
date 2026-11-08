@@ -188,6 +188,13 @@ func run() {
 	mux.HandleFunc("GET /api/admin/more-fenlei", web.HandleAdminMoreFenlei)
 	mux.HandleFunc("POST /api/admin/more-fenlei/{fenlei}/hide", web.HandleAdminHideMoreFenlei)
 	mux.HandleFunc("POST /api/admin/more-fenlei/{fenlei}/show", web.HandleAdminShowMoreFenlei)
+	mux.HandleFunc("GET /api/admin/front-categories", web.HandleAdminFrontCategories)
+	mux.HandleFunc("POST /api/admin/front-categories", web.HandleAdminFrontCategoryCreate)
+	mux.HandleFunc("PUT /api/admin/front-categories/{id}", web.HandleAdminFrontCategoryUpdate)
+	mux.HandleFunc("DELETE /api/admin/front-categories/{id}", web.HandleAdminFrontCategoryDelete)
+	mux.HandleFunc("GET /api/admin/front-categories/{id}/items", web.HandleAdminFrontCategoryItems)
+	mux.HandleFunc("POST /api/admin/front-categories/{id}/items", web.HandleAdminFrontCategoryAddItems)
+	mux.HandleFunc("POST /api/admin/front-categories/{id}/items/remove", web.HandleAdminFrontCategoryRemoveItems)
 	// 病例：管理端运行开关 + 按模板定价（不影响其他业务模块）
 	mux.HandleFunc("GET /api/admin/bing/settings", web.HandleAdminBingSettings)
 	mux.HandleFunc("POST /api/admin/bing/settings", web.HandleAdminBingSetEnabled)

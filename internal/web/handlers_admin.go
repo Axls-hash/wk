@@ -17,6 +17,7 @@ import (
 	"daili-go/internal/auth"
 	"daili-go/internal/config"
 	"daili-go/internal/fetchers"
+	"daili-go/internal/frontcat"
 	"daili-go/internal/ledger"
 	"daili-go/internal/logger"
 	"daili-go/internal/productcache"
@@ -887,6 +888,146 @@ func HandleAdminMoreProducts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{
 		"total": total, "page": page, "page_size": pageSize, "items": items,
 	})
+}
+
+// ---- 前台自定义分类 ----
+
+// HandleAdminFrontCategories GET /api/admin/front-categories
+func HandleAdminFrontCategories(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	items, err := frontcat.List()
+	if err != nil {
+		errJSON(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]interface{}{"items": items})
+}
+
+// HandleAdminFrontCategoryCreate POST /api/admin/front-categories {"name":"学习通","sort_order":0}
+func HandleAdminFrontCategoryCreate(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	var body struct {
+		Name      string `json:"name"`
+		SortOrder int    `json:"sort_order"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	cat, err := frontcat.Create(body.Name, body.SortOrder)
+	if err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	audit("frontcat.create", fmt.Sprintf(`{"id":%d,"name":%q}`, cat.ID, cat.Name))
+	writeJSON(w, 200, cat)
+}
+
+// HandleAdminFrontCategoryUpdate PUT /api/admin/front-categories/{id}
+func HandleAdminFrontCategoryUpdate(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	id, ok := pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+	var body struct {
+		Name      string `json:"name"`
+		SortOrder *int   `json:"sort_order"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if err := frontcat.Rename(id, body.Name, body.SortOrder); err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	audit("frontcat.update", fmt.Sprintf(`{"id":%d,"name":%q}`, id, body.Name))
+	writeJSON(w, 200, map[string]interface{}{"ok": true})
+}
+
+// HandleAdminFrontCategoryDelete DELETE /api/admin/front-categories/{id}
+func HandleAdminFrontCategoryDelete(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	id, ok := pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+	if err := frontcat.Delete(id); err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	audit("frontcat.delete", fmt.Sprintf(`{"id":%d}`, id))
+	writeJSON(w, 200, map[string]interface{}{"ok": true})
+}
+
+// HandleAdminFrontCategoryItems GET /api/admin/front-categories/{id}/items
+func HandleAdminFrontCategoryItems(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	id, ok := pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+	cids, err := frontcat.ItemCIDs(id)
+	if err != nil {
+		errJSON(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]interface{}{"cids": cids})
+}
+
+// HandleAdminFrontCategoryAddItems POST /api/admin/front-categories/{id}/items {"cids":[1,2]}
+func HandleAdminFrontCategoryAddItems(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	id, ok := pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+	var body struct {
+		CIDs []int64 `json:"cids"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if err := frontcat.AddItems(id, body.CIDs); err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	audit("frontcat.items.add", fmt.Sprintf(`{"id":%d,"n":%d}`, id, len(body.CIDs)))
+	writeJSON(w, 200, map[string]interface{}{"ok": true})
+}
+
+// HandleAdminFrontCategoryRemoveItems POST /api/admin/front-categories/{id}/items/remove {"cids":[1,2]}
+func HandleAdminFrontCategoryRemoveItems(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	id, ok := pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+	var body struct {
+		CIDs []int64 `json:"cids"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if err := frontcat.RemoveItems(id, body.CIDs); err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	audit("frontcat.items.remove", fmt.Sprintf(`{"id":%d,"n":%d}`, id, len(body.CIDs)))
+	writeJSON(w, 200, map[string]interface{}{"ok": true})
 }
 
 // HandleAdminMoreFenlei GET /api/admin/more-fenlei —— 货源分类列表（名称/上架数/价区间/是否已删）。

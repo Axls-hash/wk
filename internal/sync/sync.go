@@ -57,8 +57,11 @@ func Start() {
 // 里用户能看到商品列表、下单却提示“不支持的平台”。所以在 HTTP 服务启动前
 // 先按库里的 status=1 商品同步一次目录；之后同步成功会整体覆盖为最新目录。
 func LoadCatalogFromDB() error {
-	rows, err := store.DB.Query(
-		`SELECT cid, name, fenlei FROM more_products WHERE status=1 AND price_yuan>0 ORDER BY cid`)
+	// 仅「挂在前台分类 + 已上架」的商品进查课/下单目录，避免同步全量误开放。
+	rows, err := store.DB.Query(`
+		SELECT DISTINCT p.cid, p.name, p.fenlei FROM more_products p
+		INNER JOIN front_category_items fi ON fi.cid=p.cid
+		WHERE p.status=1 AND p.price_yuan>0 ORDER BY p.cid`)
 	if err != nil {
 		return err
 	}
@@ -220,36 +223,31 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 
 	// SQLite 不支持 ON DUPLICATE KEY / VALUES()，必须分支写；线上 ALLOW_SQLITE=1 时
 	// 若仍用 MySQL 语法，8144 条会全部 upsert 失败 → inserted=0（用户看到「一个都拉不到」）。
-	hidden := LoadHiddenFenlei()
+	// 同步只拉目录/改价：新商品默认下架(status=0)；已有商品保留管理员上架状态，不自动全开。
 	upsertSQL := `INSERT INTO more_products(cid, fenlei, name, price_yuan, base_yuan, price_override, content, status, updated_at)
-		 VALUES(?,?,?,?,?,0,?,?,?)`
+		 VALUES(?,?,?,?,?,0,?,0,?)`
 	if store.IsMySQL() {
 		upsertSQL += ` ON DUPLICATE KEY UPDATE fenlei=VALUES(fenlei), name=VALUES(name),
 			   base_yuan=VALUES(base_yuan),
 			   price_yuan=CASE WHEN price_override=1 THEN price_yuan ELSE VALUES(price_yuan) END,
-			   content=VALUES(content), status=VALUES(status),
+			   content=VALUES(content),
 			   updated_at=VALUES(updated_at)`
 	} else {
 		upsertSQL += ` ON CONFLICT(cid) DO UPDATE SET fenlei=excluded.fenlei, name=excluded.name,
 			   base_yuan=excluded.base_yuan,
 			   price_yuan=CASE WHEN more_products.price_override=1 THEN more_products.price_yuan ELSE excluded.price_yuan END,
-			   content=excluded.content, status=excluded.status,
+			   content=excluded.content,
 			   updated_at=excluded.updated_at`
 	}
 
 	for _, row := range uniq {
 		price := row.Price * config.SyncPriceMult
-		// 管理员删掉的分类：同步仍入库/刷新进价，但保持下架，避免前台又冒出来。
-		st := 1
-		if hidden[row.Fenlei] {
-			st = 0
-		}
 		// base_yuan=进货价（天河价×倍率，始终随同步刷新）；price_yuan=当售售价。
 		// 管理员在后台手动改价后 price_override=1，同步不得覆盖 price_yuan（否则改价失去意义），
 		// 只更新 base_yuan，便于后台随时「恢复天河默认价」。
 		_, uerr := store.DB.Exec(upsertSQL,
 			row.Cid, fenleiInt(row.Fenlei), truncate(row.Name, 200), price, price,
-			truncate(row.Content, 4000), st, now)
+			truncate(row.Content, 4000), now)
 		if uerr != nil {
 			logger.Err(uerr, "sync: upsert failed", "cid", row.Cid, "name", row.Name)
 			continue // 落库失败不进 syncedCids：若持续失败，下轮会被视为上游已撤而下架
@@ -260,15 +258,31 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 		} else {
 			inserted++
 		}
-		// 商品名冲突时保留首次出现（同名但 cid 不同，用前面那个）；隐藏分类不进查课目录
-		if st == 1 {
-			if _, dup := productMap[row.Name]; !dup {
-				productMap[row.Name] = fetchers.CatalogEntry{
-					Name:     row.Name,
-					Noun:     strconv.FormatInt(row.Cid, 10),
-					Category: row.Fenlei,
+	}
+
+	// 查课目录：仅已上架且挂在前台分类里的商品
+	{
+		r, qerr := store.DB.Query(`
+			SELECT p.cid, p.name, p.fenlei FROM more_products p
+			INNER JOIN front_category_items fi ON fi.cid=p.cid
+			WHERE p.status=1 AND p.price_yuan>0`)
+		if qerr == nil {
+			for r.Next() {
+				var cid, fenlei int64
+				var name string
+				if r.Scan(&cid, &name, &fenlei) != nil || cid == 0 || name == "" {
+					continue
+				}
+				if _, dup := productMap[name]; dup {
+					continue
+				}
+				productMap[name] = fetchers.CatalogEntry{
+					Name:     name,
+					Noun:     strconv.FormatInt(cid, 10),
+					Category: strconv.FormatInt(fenlei, 10),
 				}
 			}
+			r.Close()
 		}
 	}
 
@@ -279,6 +293,13 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 				removed++
 			}
 		}
+	}
+
+	// 未挂到任何前台分类的商品强制下架：同步不再自动全站开放。
+	if _, derr := store.DB.Exec(`
+		UPDATE more_products SET status=0, updated_at=?
+		WHERE status=1 AND cid NOT IN (SELECT cid FROM front_category_items)`, now); derr != nil {
+		logger.Warnf("sync: unshelf unassigned failed: %v", derr)
 	}
 
 	fetchers.SetProductCatalog(productMap)

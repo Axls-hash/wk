@@ -4,19 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
 	"daili-go/internal/bingli"
 	"daili-go/internal/config"
 	"daili-go/internal/fetchers"
+	"daili-go/internal/frontcat"
 	"daili-go/internal/logger"
 	"daili-go/internal/productcache"
 	"daili-go/internal/qd"
 	"daili-go/internal/ratelimit"
 	"daili-go/internal/store"
-	appsync "daili-go/internal/sync"
 	"daili-go/internal/tasks"
 )
 
@@ -39,74 +38,20 @@ func HandlePlatforms(w http.ResponseWriter, r *http.Request) {
 
 // HandleMorePlatforms GET /api/more-platforms —— 综合网课平台模块。
 //
-// 按库里已上架商品的 fenlei 动态生成；名称优先用同步时保存的上游 fenleiname
-//（如「龙龙项目」「嫩妞项目」），其次静态目录旧名，最后才回退「分类N」。
+// 只返回管理员自建的「前台分类」（且至少有 1 个已上架挂载商品）。
 func HandleMorePlatforms(w http.ResponseWriter, r *http.Request) {
-	nameByCat := appsync.LoadFenleiNames()
-	hidden := appsync.LoadHiddenFenlei()
-	order := make([]string, 0, len(fetchers.MorePlatforms))
-	seenOrder := map[string]bool{}
-	for _, e := range fetchers.MorePlatforms {
-		if !seenOrder[e.Category] {
-			order = append(order, e.Category)
-			seenOrder[e.Category] = true
-		}
-		// 静态目录名作兜底；上游 fenleiname 已存在则不覆盖
-		if _, ok := nameByCat[e.Category]; !ok {
-			nameByCat[e.Category] = e.Name
-		}
-	}
-
-	rows, err := store.DB.Query(
-		`SELECT fenlei, COUNT(*) FROM more_products
-		 WHERE status=1 AND price_yuan>0
-		 GROUP BY fenlei HAVING COUNT(*)>0`)
+	cats, err := frontcat.List()
 	if err != nil {
 		errJSON(w, 500, "加载平台失败")
 		return
 	}
-	defer rows.Close()
-
-	type catRow struct {
-		fenlei string
-		count  int64
-	}
-	have := map[string]int64{}
-	extras := make([]catRow, 0)
-	for rows.Next() {
-		var fenlei string
-		var n int64
-		if rows.Scan(&fenlei, &n) != nil || fenlei == "" || n <= 0 {
+	items := make([]map[string]interface{}, 0, len(cats))
+	for _, c := range cats {
+		if c.Count <= 0 {
 			continue
 		}
-		if hidden[fenlei] {
-			continue // 管理员已删除的分类不进前台
-		}
-		have[fenlei] = n
-		if !seenOrder[fenlei] {
-			extras = append(extras, catRow{fenlei: fenlei, count: n})
-		}
-	}
-
-	platformName := func(cat string) string {
-		if n := strings.TrimSpace(nameByCat[cat]); n != "" {
-			return n
-		}
-		return "分类" + cat
-	}
-
-	items := make([]map[string]interface{}, 0, len(have))
-	for _, cat := range order {
-		if n, ok := have[cat]; ok {
-			items = append(items, map[string]interface{}{
-				"name": platformName(cat), "category": cat, "count": n,
-			})
-		}
-	}
-	sort.Slice(extras, func(i, j int) bool { return extras[i].count > extras[j].count })
-	for _, e := range extras {
 		items = append(items, map[string]interface{}{
-			"name": platformName(e.fenlei), "category": e.fenlei, "count": e.count,
+			"name": c.Name, "category": frontcat.Key(c.ID), "count": c.Count,
 		})
 	}
 	writeJSON(w, 200, items)

@@ -216,6 +216,13 @@ const adminApi = {
   moreFenlei: () => request('GET', '/admin/more-fenlei'),
   hideMoreFenlei: (fenlei) => request('POST', `/admin/more-fenlei/${encodeURIComponent(fenlei)}/hide`),
   showMoreFenlei: (fenlei) => request('POST', `/admin/more-fenlei/${encodeURIComponent(fenlei)}/show`),
+  frontCategories: () => request('GET', '/admin/front-categories'),
+  createFrontCategory: (name, sortOrder = 0) => request('POST', '/admin/front-categories', { name, sort_order: sortOrder }),
+  updateFrontCategory: (id, body) => request('PUT', `/admin/front-categories/${id}`, body),
+  deleteFrontCategory: (id) => request('DELETE', `/admin/front-categories/${id}`),
+  frontCategoryItems: (id) => request('GET', `/admin/front-categories/${id}/items`),
+  addFrontCategoryItems: (id, cids) => request('POST', `/admin/front-categories/${id}/items`, { cids }),
+  removeFrontCategoryItems: (id, cids) => request('POST', `/admin/front-categories/${id}/items/remove`, { cids }),
   syyProjectsAdmin: () => request('GET', '/admin/syy-projects'), // 运动项目售价一览
   syySetPrice: (id, priceYuan) => request('POST', `/admin/syy-projects/${id}/price`, { price_yuan: priceYuan }),
   bingSettings: () => request('GET', '/admin/bing/settings'), // 病例开关状态

@@ -4,15 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"daili-go/internal/bingli"
-	"daili-go/internal/qd"
 	"daili-go/internal/config"
 	"daili-go/internal/fetchers"
 	"daili-go/internal/logger"
 	"daili-go/internal/productcache"
+	"daili-go/internal/qd"
 	"daili-go/internal/ratelimit"
 	"daili-go/internal/store"
 	"daili-go/internal/tasks"
@@ -35,12 +36,63 @@ func HandlePlatforms(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, fetchers.Platforms)
 }
 
-// HandleMorePlatforms GET /api/more-platforms —— 冷门网课平台模块（静态目录，如龙龙）。
-// 商品列表请查 /api/more-products（按 fenlei 过滤）。
+// HandleMorePlatforms GET /api/more-platforms —— 综合网课平台模块。
+//
+// 以前写死天河分类（龙龙=8 等）；对接丸子后分类 ID 往往对不上，前台点进去是空的。
+// 改为按库里已上架商品的 fenlei 动态生成：有货才显示；已知分类用旧名，未知的标「分类N」。
 func HandleMorePlatforms(w http.ResponseWriter, r *http.Request) {
-	items := make([]map[string]interface{}, 0, len(fetchers.MorePlatforms))
+	nameByCat := map[string]string{}
+	order := make([]string, 0, len(fetchers.MorePlatforms))
 	for _, e := range fetchers.MorePlatforms {
-		items = append(items, map[string]interface{}{"name": e.Name, "category": e.Category})
+		if _, ok := nameByCat[e.Category]; !ok {
+			order = append(order, e.Category)
+		}
+		nameByCat[e.Category] = e.Name
+	}
+
+	rows, err := store.DB.Query(
+		`SELECT fenlei, COUNT(*) FROM more_products
+		 WHERE status=1 AND price_yuan>0
+		 GROUP BY fenlei HAVING COUNT(*)>0`)
+	if err != nil {
+		errJSON(w, 500, "加载平台失败")
+		return
+	}
+	defer rows.Close()
+
+	type catRow struct {
+		fenlei string
+		count  int64
+	}
+	have := map[string]int64{}
+	extras := make([]catRow, 0)
+	for rows.Next() {
+		var fenlei string
+		var n int64
+		if rows.Scan(&fenlei, &n) != nil || fenlei == "" || n <= 0 {
+			continue
+		}
+		have[fenlei] = n
+		if _, known := nameByCat[fenlei]; !known {
+			extras = append(extras, catRow{fenlei: fenlei, count: n})
+		}
+	}
+
+	items := make([]map[string]interface{}, 0, len(have))
+	// 先按静态目录顺序放出「有货」的已知分类
+	for _, cat := range order {
+		if n, ok := have[cat]; ok {
+			items = append(items, map[string]interface{}{
+				"name": nameByCat[cat], "category": cat, "count": n,
+			})
+		}
+	}
+	// 再补丸子/其它货源多出来的分类（按商品数降序）
+	sort.Slice(extras, func(i, j int) bool { return extras[i].count > extras[j].count })
+	for _, e := range extras {
+		items = append(items, map[string]interface{}{
+			"name": "分类" + e.fenlei, "category": e.fenlei, "count": e.count,
+		})
 	}
 	writeJSON(w, 200, items)
 }

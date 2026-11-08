@@ -281,6 +281,38 @@ func SkyriverQueryProgress(platform, school, username, password, kcid, courseNam
 	}
 	return out, nil
 }
+// SkyriverMoney 查上游余额（丸子/同类 api.php act=money）。
+// 成功时返回余额字符串（上游字段多为 data.balance）；失败返回错误信息。
+func SkyriverMoney() (string, error) {
+	result, err := skyriverPost("money", nil)
+	if err != nil {
+		return "", err
+	}
+	code := stringValue(result["code"])
+	if code != "0" && code != "1" {
+		msg := stringValue(result["msg"])
+		if msg == "" {
+			msg = "查询余额失败"
+		}
+		return "", loginErr("%s", msg)
+	}
+	if data, ok := result["data"].(map[string]interface{}); ok {
+		if bal := stringValue(data["balance"]); bal != "" {
+			return bal, nil
+		}
+		if bal := stringValue(data["money"]); bal != "" {
+			return bal, nil
+		}
+	}
+	if bal := stringValue(result["balance"]); bal != "" {
+		return bal, nil
+	}
+	if bal := stringValue(result["money"]); bal != "" {
+		return bal, nil
+	}
+	return "0", nil
+}
+
 func SkyriverBudan(yid string) (string, error) {
 	result, err := skyriverPost("budan", map[string]string{"id": yid})
 	if err != nil {

@@ -1,4 +1,4 @@
-// Package syscfg 后台可改的运行时对接配置：易支付 + 天河课程 API + 实习打卡。
+// Package syscfg 后台可改的运行时对接配置：易支付 + 丸子网课 API + 实习打卡。
 //
 // 优先级：数据库 system_settings > 启动时 .env/环境变量。
 // 管理端保存后即时写入内存 config，无需重启。

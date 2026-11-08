@@ -1134,13 +1134,29 @@ function renderSyscfg(panel) {
       h('option', { value: 'alipay', selected: data.epay_type === 'alipay' || undefined }, '支付宝 alipay'),
       h('option', { value: 'qqpay', selected: data.epay_type === 'qqpay' || undefined }, 'QQ钱包 qqpay'),
     ])
-    const skyURL = textInput('skyriver_url', data.skyriver_url, { placeholder: 'https://天河域名（不要带 /api.php）' })
-    const skyUID = textInput('skyriver_uid', data.skyriver_uid, { placeholder: '对接 uid' })
+    const skyURL = textInput('skyriver_url', data.skyriver_url, { placeholder: 'https://丸子接口根地址（不要带 /api.php）' })
+    const skyUID = textInput('skyriver_uid', data.skyriver_uid, { placeholder: 'UID' })
     const skyKey = textInput('skyriver_key', '', {
       type: 'password',
-      placeholder: data.skyriver_key_set ? '已配置，留空则不修改' : '对接 key',
+      placeholder: data.skyriver_key_set ? '已配置，留空则不修改' : 'API Key',
     })
     const coursePrice = textInput('course_price', data.course_price, { placeholder: '3.00' })
+    const balTip = h('span', { class: 'tip', style: 'margin:0' }, data.skyriver_ok ? '保存后可点右侧查询余额' : '未对接')
+    const balBtn = h('button', { class: 'btn btn-sm', type: 'button', disabled: !data.skyriver_ok || undefined }, '查询丸子余额')
+    balBtn.onclick = async () => {
+      balBtn.disabled = true
+      balTip.textContent = '查询中…'
+      try {
+        const r = await adminApi.wanziBalance()
+        balTip.textContent = `上游余额：¥${r.balance}`
+        notify(`丸子余额 ${r.balance} 元`)
+      } catch (e) {
+        balTip.textContent = '查询失败'
+        notify(e.message, true)
+      } finally {
+        balBtn.disabled = !data.skyriver_ok
+      }
+    }
     const sxdkURL = textInput('sxdk_upstream_url', data.sxdk_upstream_url, { placeholder: 'https://上级/sxdk/upstream.php' })
     const sxdkAdmin = textInput('sxdk_admin', data.sxdk_admin, { placeholder: '对接 uid' })
     const sxdkToken = textInput('sxdk_token', '', {
@@ -1203,19 +1219,20 @@ function renderSyscfg(panel) {
       ]),
       h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
         h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
-          h('h2', { style: 'font-size:16px;margin:0' }, '天河课程 API 对接'),
+          h('h2', { style: 'font-size:16px;margin:0' }, '丸子对接'),
           h('span', { class: 'badge ' + (data.skyriver_ok ? 'badge-done' : 'badge-banned') },
             data.skyriver_ok ? '已对接' : '未对接'),
         ]),
         h('div', { class: 'tip', style: 'margin-bottom:12px' },
-          '查课/下单走天河 api.php。地址只填根域名，不要带 /api.php。密钥留空表示不改。'),
+          '按丸子网课 API（/api.php?act=get/add/getclass/money…，uid+key）。地址只填根域名，不要带 /api.php。密钥留空表示不改。'),
         h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
-          field('对接地址 SKYRIVER_URL', skyURL),
-          field('对接 UID', skyUID),
-          field('对接 KEY', skyKey),
+          field('接口地址', skyURL),
+          field('UID', skyUID),
+          field('API Key', skyKey),
         ]),
-        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;align-items:flex-end' }, [
           field('默认课程单价（元/门）', coursePrice, '未单独改价的平台走这个默认价'),
+          h('div', { style: 'display:flex;align-items:center;gap:10px;padding-bottom:2px' }, [balBtn, balTip]),
         ]),
       ]),
       h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [

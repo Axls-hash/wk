@@ -6,6 +6,7 @@
 package sync
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,6 +19,8 @@ import (
 	"daili-go/internal/productcache"
 	"daili-go/internal/store"
 )
+
+const settingFenleiNames = "more_fenlei_names"
 
 // Result 一次同步的结果统计（供管理后台手动触发展示）。
 type Result struct {
@@ -198,6 +201,20 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 	syncedCids := map[int64]bool{}
 	productMap := map[string]fetchers.CatalogEntry{}
 
+	// 保存上游分类名（fenleiname），前台平台卡片显示「龙龙项目」而不是「分类31」
+	fenleiNames := map[string]string{}
+	for _, row := range rows {
+		if row.Fenlei == "" || row.FenleiName == "" {
+			continue
+		}
+		if _, ok := fenleiNames[row.Fenlei]; !ok {
+			fenleiNames[row.Fenlei] = row.FenleiName
+		}
+	}
+	if err := saveFenleiNames(fenleiNames); err != nil {
+		logger.Warnf("sync: save fenlei names failed: %v", err)
+	}
+
 	// SQLite 不支持 ON DUPLICATE KEY / VALUES()，必须分支写；线上 ALLOW_SQLITE=1 时
 	// 若仍用 MySQL 语法，8144 条会全部 upsert 失败 → inserted=0（用户看到「一个都拉不到」）。
 	upsertSQL := `INSERT INTO more_products(cid, fenlei, name, price_yuan, base_yuan, price_override, content, status, updated_at)
@@ -263,6 +280,50 @@ func apply(rows []fetchers.CatalogRow) (inserted, updated, removed int, err erro
 func fenleiInt(s string) int64 {
 	v, _ := strconv.ParseInt(s, 10, 64)
 	return v
+}
+
+func saveFenleiNames(names map[string]string) error {
+	if store.DB == nil || len(names) == 0 {
+		return nil
+	}
+	// 合并旧映射，避免某轮上游漏字段把已有名字冲掉
+	merged := LoadFenleiNames()
+	for k, v := range names {
+		if strings.TrimSpace(v) != "" {
+			merged[k] = strings.TrimSpace(v)
+		}
+	}
+	raw, err := json.Marshal(merged)
+	if err != nil {
+		return err
+	}
+	now := float64(time.Now().UnixNano()) / 1e9
+	q := `INSERT INTO system_settings(name, value, updated_at) VALUES(?,?,?)`
+	if store.IsMySQL() {
+		q += ` ON DUPLICATE KEY UPDATE value=VALUES(value), updated_at=VALUES(updated_at)`
+	} else {
+		q += ` ON CONFLICT(name) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+	}
+	_, err = store.DB.Exec(q, settingFenleiNames, string(raw), now)
+	return err
+}
+
+// LoadFenleiNames 读取同步时落库的分类名映射（fenlei → fenleiname）。
+func LoadFenleiNames() map[string]string {
+	out := map[string]string{}
+	if store.DB == nil {
+		return out
+	}
+	var raw string
+	err := store.DB.QueryRow(`SELECT value FROM system_settings WHERE name=?`, settingFenleiNames).Scan(&raw)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return out
+	}
+	_ = json.Unmarshal([]byte(raw), &out)
+	if out == nil {
+		out = map[string]string{}
+	}
+	return out
 }
 
 func truncate(s string, n int) string {

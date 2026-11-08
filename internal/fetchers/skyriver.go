@@ -16,9 +16,12 @@ import (
 )
 
 type CatalogRow struct {
-	Cid                   int64
-	Name, Fenlei, Content string
-	Price                 float64
+	Cid        int64
+	Name       string
+	Fenlei     string
+	FenleiName string // 上游 fenleiname（如「龙龙项目」），前台平台卡片用
+	Content    string
+	Price      float64
 }
 type Progress struct{ Yid, Status, Process, Remarks string }
 
@@ -378,7 +381,14 @@ func FetchSkyriverCatalog() ([]CatalogRow, error) {
 			}
 			fenlei := stringValue(item["fenlei"])
 			covered[fenlei] = true
-			rows = append(rows, CatalogRow{Cid: int64(floatValue(item["cid"])), Name: stringValue(item["name"]), Fenlei: fenlei, Content: stringValue(item["content"]), Price: floatValue(item["price"])})
+			rows = append(rows, CatalogRow{
+				Cid:        int64(floatValue(item["cid"])),
+				Name:       stringValue(item["name"]),
+				Fenlei:     fenlei,
+				FenleiName: strings.TrimSpace(stringValue(item["fenleiname"])),
+				Content:    stringValue(item["content"]),
+				Price:      floatValue(item["price"]),
+			})
 		}
 		next := make([]string, 0, len(pending))
 		for _, c := range pending {

@@ -216,6 +216,7 @@ func run() {
 	mux.HandleFunc("POST /api/more/sync", web.HandleMoreSync)
 	mux.HandleFunc("GET /api/admin/syscfg", web.HandleAdminSyscfg)
 	mux.HandleFunc("POST /api/admin/syscfg", web.HandleAdminSyscfgSave)
+	mux.HandleFunc("GET /api/admin/syscfg/skyriver-balance", web.HandleAdminSkyriverBalance)
 
 	// ---- 前端静态页 + 页面分发（static/ 为可编辑源文件）----
 	// 与 daili-go 不同：不再 embed，直接读磁盘；页面按路径分发，

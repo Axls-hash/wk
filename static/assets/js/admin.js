@@ -370,17 +370,19 @@ function renderMorePrices(panel) {
       return
     }
     frontBody.replaceChildren(...state.front.map((c) => {
+      const mult = Number(c.price_mult) > 0 ? Number(c.price_mult) : 1
       const badge = c.count > 0
         ? h('span', { class: 'badge badge-done' }, `前台 ${c.count} 项`)
         : h('span', { class: 'badge badge-gray' }, '未挂商品')
       return h('tr', null, [
         h('td', { style: 'font-weight:700' }, c.name),
+        h('td', { class: 'mono' }, `${mult}×`),
         h('td', { class: 'mono' }, String(c.total || 0)),
         h('td', null, badge),
         h('td', null, [
           h('button', { class: 'btn btn-sm btn-primary', onclick: () => openPicker(c) }, '选项目上架'),
           ' ',
-          h('button', { class: 'btn btn-sm', onclick: () => renameFront(c) }, '改名'),
+          h('button', { class: 'btn btn-sm', onclick: () => editFront(c) }, '改名/倍速'),
           ' ',
           h('button', { class: 'btn btn-sm btn-danger', onclick: () => delFront(c) }, '删除'),
         ]),
@@ -393,21 +395,29 @@ function renderMorePrices(panel) {
     if (name == null) return
     const n = name.trim()
     if (!n) { notify('名称不能为空', true); return }
+    const multRaw = prompt('倍速（售价=进价×倍速，如 1.5）', '1')
+    if (multRaw == null) return
+    const mult = parseFloat(multRaw)
+    if (!(mult > 0)) { notify('倍速需大于 0', true); return }
     try {
-      await adminApi.createFrontCategory(n)
-      notify(`已创建「${n}」`)
+      await adminApi.createFrontCategory(n, 0, mult)
+      notify(`已创建「${n}」· ${mult}×`)
       await loadFront()
     } catch (e) { notify(e.message, true) }
   }
 
-  async function renameFront(c) {
-    const name = prompt('新名称', c.name)
+  async function editFront(c) {
+    const name = prompt('分类名称', c.name)
     if (name == null) return
     const n = name.trim()
     if (!n) return
+    const multRaw = prompt('倍速（售价=进价×倍速；改完会重算已挂商品售价）', String(c.price_mult || 1))
+    if (multRaw == null) return
+    const mult = parseFloat(multRaw)
+    if (!(mult > 0)) { notify('倍速需大于 0', true); return }
     try {
-      await adminApi.updateFrontCategory(c.id, { name: n })
-      notify('已改名')
+      await adminApi.updateFrontCategory(c.id, { name: n, price_mult: mult })
+      notify('已保存（已按倍速重算挂载商品售价）')
       await loadFront()
     } catch (e) { notify(e.message, true) }
   }
@@ -557,12 +567,12 @@ function renderMorePrices(panel) {
 
   panel.appendChild(h('div', { class: 'card' }, [
     h('h2', null, '前台分类（用户看到的平台）'),
-    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '同步不会自动上架。先新建分类（如「龙龙」「学习通」），再点「选项目上架」勾选要卖的商品。'),
+    h('div', { class: 'tip', style: 'margin-bottom:12px' }, '同步不会自动上架。新建分类时可设「倍速」（售价=进价×倍速），再点「选项目上架」勾选商品。'),
     h('div', { class: 'toolbar', style: 'margin-bottom:10px' }, [
       h('button', { class: 'btn btn-primary btn-sm', onclick: createFront }, '＋ 新建分类'),
     ]),
     h('div', { class: 'table-wrap' }, h('table', null, [
-      h('thead', null, h('tr', null, ['分类名', '已挂载', '状态', '操作'].map((x) => h('th', null, x)))),
+      h('thead', null, h('tr', null, ['分类名', '倍速', '已挂载', '状态', '操作'].map((x) => h('th', null, x)))),
       frontBody,
     ])),
   ]))
@@ -1407,19 +1417,36 @@ function renderSyscfg(panel) {
       ]),
       h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
         h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
-          h('h2', { style: 'font-size:16px;margin:0' }, '天河课程 API 对接'),
+          h('h2', { style: 'font-size:16px;margin:0' }, '货源对接（天河/丸子同类）'),
           h('span', { class: 'badge ' + (data.skyriver_ok ? 'badge-done' : 'badge-banned') },
             data.skyriver_ok ? '已对接' : '未对接'),
+          (() => {
+            const balTip = h('span', { class: 'tip', style: 'margin:0' }, '')
+            const balBtn = h('button', { class: 'btn btn-sm', type: 'button' }, '查询余额')
+            balBtn.onclick = async () => {
+              balBtn.disabled = true
+              balTip.textContent = '查询中…'
+              try {
+                const res = await adminApi.skyriverBalance()
+                balTip.textContent = `上游余额：${res.balance}`
+                notify(`余额 ${res.balance}`)
+              } catch (e) {
+                balTip.textContent = e.message || '查询失败'
+                notify(e.message, true)
+              } finally { balBtn.disabled = false }
+            }
+            return h('span', { style: 'display:inline-flex;align-items:center;gap:8px' }, [balBtn, balTip])
+          })(),
         ]),
         h('div', { class: 'tip', style: 'margin-bottom:12px' },
-          '查课/下单走天河 api.php。地址只填根域名，不要带 /api.php。密钥留空表示不改。'),
+          '查课/下单/同步走 api.php。地址只填根域名（如 https://xuexiba.icu），不要带 /api.php。密钥留空表示不改。'),
         h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
-          field('对接地址 SKYRIVER_URL', skyURL),
+          field('对接地址', skyURL),
           field('对接 UID', skyUID),
           field('对接 KEY', skyKey),
         ]),
         h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
-          field('默认课程单价（元/门）', coursePrice, '未单独改价的平台走这个默认价'),
+          field('主流平台默认单价（元/门）', coursePrice, '智慧树/学习通等「平台价格」页未单独改价时用这个'),
         ]),
       ]),
       h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [

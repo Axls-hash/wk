@@ -905,24 +905,29 @@ func HandleAdminFrontCategories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"items": items})
 }
 
-// HandleAdminFrontCategoryCreate POST /api/admin/front-categories {"name":"学习通","sort_order":0}
+// HandleAdminFrontCategoryCreate POST /api/admin/front-categories {"name":"学习通","sort_order":0,"price_mult":1.5}
 func HandleAdminFrontCategoryCreate(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
 	var body struct {
-		Name      string `json:"name"`
-		SortOrder int    `json:"sort_order"`
+		Name      string   `json:"name"`
+		SortOrder int      `json:"sort_order"`
+		PriceMult *float64 `json:"price_mult"`
 	}
 	if !readJSON(w, r, &body) {
 		return
 	}
-	cat, err := frontcat.Create(body.Name, body.SortOrder)
+	mult := 1.0
+	if body.PriceMult != nil {
+		mult = *body.PriceMult
+	}
+	cat, err := frontcat.Create(body.Name, body.SortOrder, mult)
 	if err != nil {
 		errJSON(w, 400, err.Error())
 		return
 	}
-	audit("frontcat.create", fmt.Sprintf(`{"id":%d,"name":%q}`, cat.ID, cat.Name))
+	audit("frontcat.create", fmt.Sprintf(`{"id":%d,"name":%q,"price_mult":%v}`, cat.ID, cat.Name, cat.PriceMult))
 	writeJSON(w, 200, cat)
 }
 
@@ -936,13 +941,14 @@ func HandleAdminFrontCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name      string `json:"name"`
-		SortOrder *int   `json:"sort_order"`
+		Name      string   `json:"name"`
+		SortOrder *int     `json:"sort_order"`
+		PriceMult *float64 `json:"price_mult"`
 	}
 	if !readJSON(w, r, &body) {
 		return
 	}
-	if err := frontcat.Rename(id, body.Name, body.SortOrder); err != nil {
+	if err := frontcat.Update(id, body.Name, body.SortOrder, body.PriceMult); err != nil {
 		errJSON(w, 400, err.Error())
 		return
 	}

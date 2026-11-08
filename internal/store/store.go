@@ -256,8 +256,10 @@ func migrate() error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
 		sort_order INTEGER NOT NULL DEFAULT 0,
+		price_mult REAL NOT NULL DEFAULT 1,
 		created_at REAL NOT NULL
 	)`)
+	addColumn("front_categories", "price_mult", "REAL NOT NULL DEFAULT 1")
 	mustExec(`CREATE TABLE IF NOT EXISTS front_category_items (
 		category_id INTEGER NOT NULL,
 		cid INTEGER NOT NULL,

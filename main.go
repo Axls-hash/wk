@@ -164,6 +164,7 @@ func run() {
 
 	// ---- 管理后台 JSON ----
 	mux.HandleFunc("POST /api/admin/login", web.HandleAdminLogin)
+	mux.HandleFunc("POST /api/admin/change-password", web.HandleAdminChangePassword)
 	mux.HandleFunc("POST /api/admin/logout", web.HandleAdminLogout)
 	mux.HandleFunc("GET /api/admin/me", web.HandleAdminMe)
 	mux.HandleFunc("GET /api/admin/dashboard", web.HandleAdminDashboard)

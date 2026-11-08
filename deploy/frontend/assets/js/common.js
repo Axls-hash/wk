@@ -207,6 +207,7 @@ const adminApi = {
   moreSync: () => request('POST', '/more/sync'), // 综合网课商品手动同步
   logout: () => request('POST', '/admin/logout'),
   me: () => request('GET', '/admin/me'),
+  changeAdminPassword: (oldPassword, newPassword) => request('POST', '/admin/change-password', { old_password: oldPassword, new_password: newPassword }),
   dashboard: () => request('GET', '/admin/dashboard'),
   prices: () => request('GET', '/admin/prices'),
   setPrice: (platform, priceYuan) => request('POST', `/admin/prices/${encodeURIComponent(platform)}`, { price_yuan: priceYuan }),

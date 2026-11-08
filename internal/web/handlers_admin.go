@@ -25,6 +25,7 @@ import (
 	"daili-go/internal/securestore"
 	"daili-go/internal/store"
 	appsync "daili-go/internal/sync"
+	"daili-go/internal/syscfg"
 )
 
 // 独立管理后台 JSON 接口（/api/admin/*），对齐 Python routers/admin_api.py：
@@ -84,6 +85,46 @@ func HandleAdminMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"username": config.AdminUsername})
+}
+
+// HandleAdminChangePassword POST /api/admin/change-password
+// {"old_password":"...","new_password":"..."} —— 校验旧密码后写入 system_settings 并热更新。
+func HandleAdminChangePassword(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r) {
+		return
+	}
+	var body struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if body.OldPassword == "" || body.NewPassword == "" {
+		errJSON(w, 400, "请填写旧密码和新密码")
+		return
+	}
+	if !auth.VerifyPassword(body.OldPassword, config.AdminPasswordHash) {
+		errJSON(w, 400, "旧密码不正确")
+		return
+	}
+	np := strings.TrimSpace(body.NewPassword)
+	if n := len([]rune(np)); n < 6 || n > 72 {
+		errJSON(w, 400, "新密码需 6~72 个字符")
+		return
+	}
+	if auth.SafeEq(body.OldPassword, np) {
+		errJSON(w, 400, "新密码不能与旧密码相同")
+		return
+	}
+	hash := auth.HashPassword(np)
+	if err := syscfg.SetAdminPasswordHash(hash); err != nil {
+		logger.Err(err, "admin change password failed")
+		errJSON(w, 500, "保存失败，请稍后再试")
+		return
+	}
+	audit("admin.password.change", `{"ok":true}`)
+	writeJSON(w, 200, map[string]interface{}{"ok": true})
 }
 
 // HandleMoreSync POST /api/more/sync —— 管理后台手动触发冷门网课商品同步。

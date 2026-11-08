@@ -42,6 +42,7 @@ const AUDIT_ACTIONS = {
   'more.status.on': '上架商品',
   'more.status.off': '下架商品',
   'more.content.set': '改商品介绍',
+  'admin.password.change': '修改管理员密码',
   'frontcat.create': '新建前台分类',
   'frontcat.update': '改前台分类',
   'frontcat.delete': '删前台分类',
@@ -93,6 +94,42 @@ function applyAdminView() {
   }
 }
 
+function openChangeAdminPassword() {
+  const oldInp = h('input', { class: 'input', type: 'password', autocomplete: 'current-password', placeholder: '当前密码' })
+  const newInp = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: '新密码（6~72 字符）' })
+  const againInp = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: '再输入一次新密码' })
+  const tip = h('div', { class: 'tip', style: 'margin-top:8px' }, '改密后立即生效；请妥善保管新密码。')
+  const saveBtn = h('button', { class: 'btn btn-primary', type: 'button' }, '确认修改')
+  const mask = modalMask(h('div', { class: 'modal', style: 'width:min(420px,96vw)' }, [
+    h('h3', null, '修改管理员密码'),
+    h('div', { class: 'field', style: 'margin-top:10px' }, [h('label', null, '当前密码'), oldInp]),
+    h('div', { class: 'field', style: 'margin-top:10px' }, [h('label', null, '新密码'), newInp]),
+    h('div', { class: 'field', style: 'margin-top:10px' }, [h('label', null, '确认新密码'), againInp]),
+    tip,
+    h('div', { class: 'modal-actions' }, [
+      h('button', { type: 'button', class: 'btn', onclick: () => mask.remove() }, '取消'),
+      saveBtn,
+    ]),
+  ]))
+  saveBtn.onclick = async () => {
+    const oldPw = oldInp.value
+    const np = newInp.value
+    const again = againInp.value
+    if (!oldPw || !np) { notify('请填写完整', true); return }
+    if (np !== again) { notify('两次新密码不一致', true); return }
+    if ([...np].length < 6 || [...np].length > 72) { notify('新密码需 6~72 个字符', true); return }
+    saveBtn.disabled = true
+    try {
+      await adminApi.changeAdminPassword(oldPw, np)
+      notify('密码已修改')
+      mask.remove()
+    } catch (e) {
+      notify(e.message, true)
+      saveBtn.disabled = false
+    }
+  }
+}
+
 function initAdminEvents() {
   $('#admin-login-form').addEventListener('submit', async (e) => {
     e.preventDefault()
@@ -118,6 +155,9 @@ function initAdminEvents() {
     adminState.user = null
     applyAdminView()
   })
+
+  const pwBtn = $('#admin-change-pw')
+  if (pwBtn) pwBtn.addEventListener('click', () => openChangeAdminPassword())
 
   $('#admin-tabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.nav-tab')

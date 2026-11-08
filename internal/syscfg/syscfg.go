@@ -315,6 +315,30 @@ func applyMap(m map[string]string) {
 	if config.RegisterOpen && strings.TrimSpace(config.RegisterCode) == "" {
 		config.RegisterOpen = false
 	}
+
+	if v, ok := m["admin_password_hash"]; ok {
+		v = strings.TrimSpace(v)
+		if strings.HasPrefix(v, "pbkdf2$") {
+			config.AdminPasswordHash = v
+		}
+	}
+}
+
+// SetAdminPasswordHash 保存管理员密码哈希到库并热更新内存（改密用）。
+func SetAdminPasswordHash(hash string) error {
+	hash = strings.TrimSpace(hash)
+	if !strings.HasPrefix(hash, "pbkdf2$") {
+		return fmt.Errorf("密码哈希无效")
+	}
+	if store.DB == nil {
+		return fmt.Errorf("数据库未就绪")
+	}
+	now := float64(time.Now().UnixNano()) / 1e9
+	if err := upsert("admin_password_hash", hash, now); err != nil {
+		return err
+	}
+	config.AdminPasswordHash = hash
+	return nil
 }
 
 func yuanToFen(yuan string) int {

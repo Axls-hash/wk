@@ -1141,6 +1141,13 @@ function renderSyscfg(panel) {
       placeholder: data.skyriver_key_set ? '已配置，留空则不修改' : '对接 key',
     })
     const coursePrice = textInput('course_price', data.course_price, { placeholder: '3.00' })
+    const sxdkURL = textInput('sxdk_upstream_url', data.sxdk_upstream_url, { placeholder: 'https://上级/sxdk/upstream.php' })
+    const sxdkAdmin = textInput('sxdk_admin', data.sxdk_admin, { placeholder: '对接 uid' })
+    const sxdkToken = textInput('sxdk_token', '', {
+      type: 'password',
+      placeholder: data.sxdk_token_set ? '已配置，留空则不修改' : '对接 token/key',
+    })
+    const sxdkPrice = textInput('sxdk_price_yuan', data.sxdk_price_yuan || '1', { placeholder: '1' })
 
     const saveBtn = h('button', { class: 'btn', type: 'button' }, '保存配置')
     saveBtn.onclick = async () => {
@@ -1157,11 +1164,16 @@ function renderSyscfg(panel) {
           skyriver_uid: skyUID.value.trim(),
           skyriver_key: skyKey.value,
           course_price: coursePrice.value.trim(),
+          sxdk_upstream_url: sxdkURL.value.trim(),
+          sxdk_admin: sxdkAdmin.value.trim(),
+          sxdk_token: sxdkToken.value,
+          sxdk_price_yuan: sxdkPrice.value.trim(),
         }
         const next = await adminApi.saveSyscfg(body)
         notify('已保存，立即生效（无需重启）')
         epayKey.value = ''
         skyKey.value = ''
+        sxdkToken.value = ''
         draw(next)
       } catch (e) {
         notify(e.message, true)
@@ -1204,6 +1216,23 @@ function renderSyscfg(panel) {
         ]),
         h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
           field('默认课程单价（元/门）', coursePrice, '未单独改价的平台走这个默认价'),
+        ]),
+      ]),
+      h('div', { class: 'card', style: 'padding:18px;margin-bottom:14px' }, [
+        h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
+          h('h2', { style: 'font-size:16px;margin:0' }, '实习打卡对接'),
+          h('span', { class: 'badge ' + (data.sxdk_ok ? 'badge-done' : 'badge-banned') },
+            data.sxdk_ok ? '已对接' : '未对接'),
+        ]),
+        h('div', { class: 'tip', style: 'margin-bottom:12px' },
+          '对接天河/套娃上级 upstream。三项齐了用户端才能正常查账号、下单；密钥留空表示不改。'),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px' }, [
+          field('上游地址 SXDK_UPSTREAM_URL', sxdkURL, '一般填 …/sxdk/upstream.php，末尾不要 /'),
+          field('对接 UID', sxdkAdmin),
+          field('对接 Token', sxdkToken),
+        ]),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:12px' }, [
+          field('售价（积分/天）', sxdkPrice),
         ]),
       ]),
       h('div', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap' }, [

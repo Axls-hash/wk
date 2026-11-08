@@ -1,4 +1,4 @@
-// Package syscfg 后台可改的运行时对接配置：易支付 + 天河课程 API。
+// Package syscfg 后台可改的运行时对接配置：易支付 + 天河课程 API + 实习打卡。
 //
 // 优先级：数据库 system_settings > 启动时 .env/环境变量。
 // 管理端保存后即时写入内存 config，无需重启。
@@ -19,19 +19,24 @@ import (
 var secretKeys = map[string]bool{
 	"epay_key":     true,
 	"skyriver_key": true,
+	"sxdk_token":   true,
 }
 
 // 允许写入的键（防任意写库）。
 var allowedKeys = map[string]bool{
-	"site_url":      true,
-	"epay_api_url":  true,
-	"epay_pid":      true,
-	"epay_key":      true,
-	"epay_type":     true,
-	"skyriver_url":  true,
-	"skyriver_uid":  true,
-	"skyriver_key":  true,
-	"course_price":  true, // 元，写入后换算为 CoursePriceFen
+	"site_url":         true,
+	"epay_api_url":     true,
+	"epay_pid":         true,
+	"epay_key":         true,
+	"epay_type":        true,
+	"skyriver_url":     true,
+	"skyriver_uid":     true,
+	"skyriver_key":     true,
+	"course_price":     true, // 元，写入后换算为 CoursePriceFen
+	"sxdk_upstream_url": true,
+	"sxdk_admin":       true,
+	"sxdk_token":       true,
+	"sxdk_price_yuan":  true,
 }
 
 // LoadFromDB 在 store 打开后调用：用库内值覆盖 env 默认值。
@@ -66,45 +71,60 @@ type View struct {
 	SkyriverURL string `json:"skyriver_url"`
 	SkyriverUID string `json:"skyriver_uid"`
 	SkyriverKeySet bool `json:"skyriver_key_set"`
-	SkyriverOK  bool   `json:"skyriver_ok"`
-	CoursePrice string `json:"course_price"` // 元，两位小数文本
-	Source      string `json:"source"`       // "db" | "env" 提示
+	SkyriverOK      bool   `json:"skyriver_ok"`
+	CoursePrice     string `json:"course_price"` // 元，两位小数文本
+	SxdkUpstreamURL string `json:"sxdk_upstream_url"`
+	SxdkAdmin       string `json:"sxdk_admin"`
+	SxdkTokenSet    bool   `json:"sxdk_token_set"`
+	SxdkPriceYuan   string `json:"sxdk_price_yuan"`
+	SxdkOK          bool   `json:"sxdk_ok"`
+	Source          string `json:"source"` // "db" | "env" 提示
 }
 
 // GetView 返回当前生效配置（内存值，已含 DB 覆盖）。
 func GetView() View {
 	courseYuan := fmt.Sprintf("%.2f", float64(config.CoursePriceFen)/100)
+	sxdkPrice := strconv.FormatFloat(config.SxdkPriceYuan, 'f', -1, 64)
 	src := "env"
 	if hasAnyDB() {
 		src = "db"
 	}
 	return View{
-		SiteURL:        config.SiteURL,
-		EpayAPIURL:     config.EpayAPIURL,
-		EpayPID:        config.EpayPID,
-		EpayKeySet:     strings.TrimSpace(config.EpayKey) != "",
-		EpayType:       config.EpayType,
-		PayEnabled:     config.PayEnabled,
-		SkyriverURL:    config.SkyriverURL,
-		SkyriverUID:    config.SkyriverUID,
-		SkyriverKeySet: strings.TrimSpace(config.SkyriverKey) != "",
-		SkyriverOK:     config.SkyriverURL != "" && config.SkyriverUID != "" && config.SkyriverKey != "",
-		CoursePrice:    courseYuan,
-		Source:         src,
+		SiteURL:         config.SiteURL,
+		EpayAPIURL:      config.EpayAPIURL,
+		EpayPID:         config.EpayPID,
+		EpayKeySet:      strings.TrimSpace(config.EpayKey) != "",
+		EpayType:        config.EpayType,
+		PayEnabled:      config.PayEnabled,
+		SkyriverURL:     config.SkyriverURL,
+		SkyriverUID:     config.SkyriverUID,
+		SkyriverKeySet:  strings.TrimSpace(config.SkyriverKey) != "",
+		SkyriverOK:      config.SkyriverURL != "" && config.SkyriverUID != "" && config.SkyriverKey != "",
+		CoursePrice:     courseYuan,
+		SxdkUpstreamURL: config.SxdkUpstreamURL,
+		SxdkAdmin:       config.SxdkAdmin,
+		SxdkTokenSet:    strings.TrimSpace(config.SxdkToken) != "",
+		SxdkPriceYuan:   sxdkPrice,
+		SxdkOK:          config.SxdkUpstreamURL != "" && config.SxdkAdmin != "" && config.SxdkToken != "",
+		Source:          src,
 	}
 }
 
 // SaveInput 管理端提交体；密钥字段留空表示「保持原值」。
 type SaveInput struct {
-	SiteURL     *string `json:"site_url"`
-	EpayAPIURL  *string `json:"epay_api_url"`
-	EpayPID     *string `json:"epay_pid"`
-	EpayKey     *string `json:"epay_key"`
-	EpayType    *string `json:"epay_type"`
-	SkyriverURL *string `json:"skyriver_url"`
-	SkyriverUID *string `json:"skyriver_uid"`
-	SkyriverKey *string `json:"skyriver_key"`
-	CoursePrice *string `json:"course_price"`
+	SiteURL         *string `json:"site_url"`
+	EpayAPIURL      *string `json:"epay_api_url"`
+	EpayPID         *string `json:"epay_pid"`
+	EpayKey         *string `json:"epay_key"`
+	EpayType        *string `json:"epay_type"`
+	SkyriverURL     *string `json:"skyriver_url"`
+	SkyriverUID     *string `json:"skyriver_uid"`
+	SkyriverKey     *string `json:"skyriver_key"`
+	CoursePrice     *string `json:"course_price"`
+	SxdkUpstreamURL *string `json:"sxdk_upstream_url"`
+	SxdkAdmin       *string `json:"sxdk_admin"`
+	SxdkToken       *string `json:"sxdk_token"`
+	SxdkPriceYuan   *string `json:"sxdk_price_yuan"`
 }
 
 // Save 校验并落库，同时热更新内存 config。
@@ -136,6 +156,9 @@ func Save(in SaveInput) (View, error) {
 	put("skyriver_url", in.SkyriverURL, true)
 	put("skyriver_uid", in.SkyriverUID, false)
 	put("skyriver_key", in.SkyriverKey, false)
+	put("sxdk_upstream_url", in.SxdkUpstreamURL, true)
+	put("sxdk_admin", in.SxdkAdmin, false)
+	put("sxdk_token", in.SxdkToken, false)
 
 	if in.CoursePrice != nil {
 		v := strings.TrimSpace(*in.CoursePrice)
@@ -144,6 +167,16 @@ func Save(in SaveInput) (View, error) {
 				return View{}, fmt.Errorf("默认课程单价必须是数字（元）")
 			}
 			updates["course_price"] = v
+		}
+	}
+	if in.SxdkPriceYuan != nil {
+		v := strings.TrimSpace(*in.SxdkPriceYuan)
+		if v != "" {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil || f <= 0 {
+				return View{}, fmt.Errorf("打卡单价必须是大于 0 的数字（积分/天）")
+			}
+			updates["sxdk_price_yuan"] = v
 		}
 	}
 
@@ -222,6 +255,21 @@ func applyMap(m map[string]string) {
 	}
 	if v, ok := m["course_price"]; ok && strings.TrimSpace(v) != "" {
 		config.CoursePriceFen = yuanToFen(v)
+	}
+
+	if v, ok := m["sxdk_upstream_url"]; ok {
+		config.SxdkUpstreamURL = strings.TrimRight(strings.TrimSpace(v), "/")
+	}
+	if v, ok := m["sxdk_admin"]; ok {
+		config.SxdkAdmin = strings.TrimSpace(v)
+	}
+	if v, ok := m["sxdk_token"]; ok {
+		config.SxdkToken = strings.TrimSpace(v)
+	}
+	if v, ok := m["sxdk_price_yuan"]; ok && strings.TrimSpace(v) != "" {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && f > 0 {
+			config.SxdkPriceYuan = f
+		}
 	}
 }
 

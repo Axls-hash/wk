@@ -31,8 +31,8 @@ func HandleAdminSyscfgSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	audit("syscfg.save", fmt.Sprintf(
-		`{"pay_enabled":%t,"skyriver_ok":%t,"site_url":%q}`,
-		view.PayEnabled, view.SkyriverOK, view.SiteURL))
-	logger.Infof("syscfg saved: pay=%t skyriver=%t", view.PayEnabled, view.SkyriverOK)
+		`{"pay_enabled":%t,"skyriver_ok":%t,"sxdk_ok":%t,"site_url":%q}`,
+		view.PayEnabled, view.SkyriverOK, view.SxdkOK, view.SiteURL))
+	logger.Infof("syscfg saved: pay=%t skyriver=%t sxdk=%t", view.PayEnabled, view.SkyriverOK, view.SxdkOK)
 	writeJSON(w, 200, view)
 }
